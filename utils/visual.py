@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from scipy.interpolate import spline
+from scipy.interpolate import BSpline as spline
 
 
 def show_img(pic, name='pic', x=0, y=0, wait=0, keep=False):
@@ -83,7 +83,8 @@ def eval_heatmap(arg, heatmaps, img_name, bbox, save_img=False):
         hm = cv2.imread('./imgs/'+name.split('.')[0]+'_hm.png')
         syn = cv2.addWeighted(pic, 0.4, hm, 0.6, 0)
         cv2.imwrite('./imgs/'+name.split('.')[0]+'_syn.png', syn)
-    plt.show()
+    else:
+        plt.show()
 
 
 def eval_pred_points(arg, pred_coords, img_name, bbox, save_img=False):
@@ -109,7 +110,8 @@ def eval_pred_points(arg, pred_coords, img_name, bbox, save_img=False):
             os.mkdir('./imgs')
         name = (img_name[0]).split('/')[-1]
         cv2.imwrite('./imgs/'+name.split('.')[0]+'_lmk.png', pic)
-    show_img(pic)
+    else:
+        show_img(pic)
 
 
 def eval_gt_pred_points(arg, gt_coords, pred_coords, img_name, bbox, save_img=False):
@@ -129,14 +131,15 @@ def eval_gt_pred_points(arg, gt_coords, pred_coords, img_name, bbox, save_img=Fa
 
     for coord_index in range(kp_num[arg.dataset]):
         cv2.circle(pic, (int(pred_coords[2 * coord_index]), int(pred_coords[2 * coord_index + 1])), 2, (0, 0, 255))
-        cv2.circle(pic, (int(gt_coords[2 * coord_index]), int(gt_coords[2 * coord_index + 1])), 2, (0, 255, 0))
+        cv2.circle(pic, (int(gt_coords[0, 2 * coord_index]), int(gt_coords[0, 2 * coord_index + 1])), 2, (0, 255, 0))
     if save_img:
         import os
         if not os.path.exists('./imgs'):
             os.mkdir('./imgs')
         name = (img_name[0]).split('/')[-1]
         cv2.imwrite('./imgs/'+name.split('.')[0]+'_lmk.png', pic)
-    show_img(pic)
+    else:
+        show_img(pic)
 
 
 def eval_CED(auc_record):

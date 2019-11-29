@@ -9,10 +9,10 @@ from models import *
 from utils import *
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from scipy.interpolate import spline
+from scipy.interpolate import BSpline as spline
 
 use_dataset = 'WFLW'
-use_epoch = '750'
+use_epoch = '420'
 
 # load network
 devices = torch.device('cuda:0')
@@ -20,8 +20,8 @@ print('*****  WFLW trained Model Evaluating  *****')
 print('Loading network ...')
 estimator = Estimator()
 regressor = Regressor(output=2*kp_num[use_dataset])
-estimator = load_weights(estimator, 'estimator_'+use_epoch+'.pth', devices)
-regressor = load_weights(regressor, use_dataset+'_regressor_'+use_epoch+'.pth', devices)
+estimator = load_weights(estimator, './weights/checkpoints/estimator_'+use_epoch+'.pth', devices)
+regressor = load_weights(regressor, './weights/checkpoints/'+use_dataset+'_regressor_'+use_epoch+'.pth', devices)
 estimator = estimator.cuda(device=devices)
 regressor = regressor.cuda(device=devices)
 estimator.eval()
@@ -29,7 +29,7 @@ regressor.eval()
 print('Loading network done!\nStart testing ...')
 
 # detect face and facial landmark
-rescale_ratio = 0.2/2
+rescale_ratio = 0.5
 cv2.namedWindow("Face Detector")
 cap = cv2.VideoCapture(0)
 face_keypoint_coords = []
@@ -42,7 +42,7 @@ while cap.isOpened():      # isOpened()  检测摄像头是否处于打开状态
         if k == ord('c') or k == ord('C'):
             t_start = str(int(time.time()))
 
-            face_detector = dlib.cnn_face_detection_model_v1('mmod_human_face_detector.dat')
+            face_detector = dlib.cnn_face_detection_model_v1('/home/lichnost/.face_alignment/data/mmod_human_face_detector.dat')
             rec = face_detector(img, 1)
 
             if len(rec) == 0:

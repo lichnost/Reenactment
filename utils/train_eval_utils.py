@@ -35,7 +35,8 @@ def load_weights(net, pth_file, device):
 def create_model(arg, devices_list):
     from models import Estimator, Discrim, Regressor
 
-    estimator = Estimator(stacks=arg.hour_stack, msg_pass=arg.msg_pass)
+    estimator = Estimator(gp_loss_type=arg.gp_loss_type, gp_loss_lambda=arg.gp_loss_lambda,
+                          stacks=arg.hour_stack, msg_pass=arg.msg_pass)
     regressor = Regressor(fuse_stages=arg.fuse_stage, output=2*kp_num[arg.dataset])
     discrim = Discrim() if arg.GAN else None
 
@@ -152,3 +153,8 @@ def calc_auc(dataset, split, error_rate, max_threshold):
     for i in range(threshold.size):
         accuracys[i] = np.sum(error_rate < threshold[i]) * 1.0 / dataset_size[dataset][split]
     return auc(threshold, accuracys) / max_threshold, accuracys
+
+
+def get_heatmap_gray(heatmaps):
+    result = torch.sum(heatmaps, dim=1)
+    return result

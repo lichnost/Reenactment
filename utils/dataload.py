@@ -57,7 +57,14 @@ def convert_img_to_gray(img):
 
 
 def get_random_transform_param(split, bbox):
-    translation, trans_dir, rotation, scaling, flip, gaussian_blur = 0, 0, 0, 1., 0, 0
+    translation = 0
+    trans_dir = 0
+    rotation = 0
+    scaling = 1.0
+    scaling_horizontal = 0.0
+    scaling_vertical = 0.0
+    flip = 0
+    gaussian_blur = 0
     if split in ['train']:
         random.seed(time.time())
         translate_param = int(args.trans_ratio * abs(bbox[2] - bbox[0]))
@@ -65,9 +72,11 @@ def get_random_transform_param(split, bbox):
         trans_dir = random.randint(0, 3)  # LU:0 RU:1 LL:2 RL:3
         rotation = random.uniform(-args.rotate_limit, args.rotate_limit)
         scaling = random.uniform(1-args.scale_ratio, 1+args.scale_ratio)
+        scaling_horizontal = random.uniform(1 - args.scale_horizontal, 1 + args.scale_horizontal)
+        scaling_vertical = random.uniform(1 - args.scale_vertical, 1+args.scale_vertical)
         flip = random.randint(0, 1)
         gaussian_blur = random.randint(0, 1)
-    return translation, trans_dir, rotation, scaling, flip, gaussian_blur
+    return translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur
 
 
 def further_transform(pic, bbox, flip, gaussian_blur):
@@ -187,7 +196,11 @@ def get_item_from(dataset, split, annotation):
     coord_xy = np.array(np.float32(list(map(float, annotation[:2*kp_num[dataset]]))))
     bbox = np.array(list(map(int, annotation[-7:-3])))
 
-    translation, trans_dir, rotation, scaling, flip, gaussian_blur = get_random_transform_param(split, bbox)
+    translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(split, bbox)
+
+    horizontal_add = (bbox[3] - bbox[1]) * scaling_horizontal
+    vertical_add = (bbox[2] - bbox[0]) * scaling_vertical
+    bbox = np.float32([bbox[0] - horizontal_add, bbox[1] - vertical_add, bbox[2] + horizontal_add, bbox[3] + vertical_add])
 
     position_before = np.float32([[int(bbox[0]) + pow(-1, trans_dir+1)*translation,
                                    int(bbox[1]) + pow(-1, trans_dir//2+1)*translation],
@@ -209,5 +222,4 @@ def get_item_from(dataset, split, annotation):
     gt_coords_xy = get_gt_coords(dataset, affine_matrix, coord_x_cropped, coord_y_cropped)
 
     gt_heatmap = get_gt_heatmap(dataset, gt_coords_xy)
-
     return pic_affine, gt_coords_xy, gt_heatmap, coord_xy, bbox, annotation[-1]

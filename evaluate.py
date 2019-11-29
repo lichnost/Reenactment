@@ -24,7 +24,8 @@ def evaluate(arg):
           '# Max threshold:      ' + str(arg.max_threshold) + '\n')
     
     print('Loading network ...')
-    estimator = Estimator(stacks=arg.hour_stack, msg_pass=arg.msg_pass)
+    estimator = Estimator(gp_loss_type=arg.gp_loss_type, gp_loss_lambda=arg.gp_loss_lambda,
+                          stacks=arg.hour_stack, msg_pass=arg.msg_pass)
     regressor = Regressor(fuse_stages=arg.fuse_stage, output=2*kp_num[arg.dataset])
     estimator = load_weights(estimator, arg.save_folder+'estimator_'+str(arg.eval_epoch)+'.pth', devices)
     regressor = load_weights(regressor, arg.save_folder+arg.dataset+'_regressor_'+str(arg.eval_epoch)+'.pth', devices)
@@ -41,6 +42,7 @@ def evaluate(arg):
             start = time.time()
 
             input_images, gt_coords_xy, gt_heatmap, coords_xy, bbox, img_name = data
+
             gt_coords_xy = gt_coords_xy.squeeze().numpy()
             bbox = bbox.squeeze().numpy()
             error_normalize_factor = calc_normalize_factor(arg.dataset, coords_xy.numpy(), arg.norm_way) \
@@ -159,7 +161,7 @@ def evaluate_nparts(arg):
           '# Max threshold:      ' + str(arg.max_threshold) + '\n')
 
     print('Loading network ...')
-    estimator = Estimator(stacks=arg.hour_stack, msg_pass=arg.msg_pass)
+    estimator = Estimator(loss_type=arg.hm_loss_type, stacks=arg.hour_stack, msg_pass=arg.msg_pass)
     regressor = Regressor(fuse_stages=arg.fuse_stage, output=2 * kp_num[arg.dataset])
     estimator = load_weights(estimator, arg.save_folder + 'estimator_' + str(arg.eval_epoch) + '.pth', devices)
     regressor = load_weights(regressor, arg.save_folder + arg.dataset + '_regressor_' + str(arg.eval_epoch) + '.pth',
@@ -215,4 +217,7 @@ def evaluate_nparts(arg):
 
 
 if __name__ == '__main__':
-    evaluate_nparts(args)
+    if args.gt_heatmaps:
+        evaluate_with_gt_heatmap(args)
+    else:
+        evaluate(args)

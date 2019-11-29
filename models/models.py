@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .losses import HeatmapLoss
+from .losses import HeatmapLoss, GPLoss, GPFullLoss
 
 
 class Bottleneck(nn.Module):
@@ -312,10 +312,17 @@ class MessagePassing(nn.Module):
 
 class Estimator(nn.Module):
 
-    def __init__(self, stacks=4, msg_pass=1):
+    def __init__(self, gp_loss_type='GPLoss', gp_loss_lambda=0.8, stacks=4, msg_pass=1):
         super(Estimator, self).__init__()
+        self.gp_loss_type = gp_loss_type
+        self.gp_loss_lambda = gp_loss_lambda
         self.stacks = stacks
         self.msg_pass = msg_pass
+        if self.gp_loss_type == 'GPLoss':
+            self.gp_loss = GPLoss()
+        elif self.gp_loss_type == 'GPFullLoss':
+            self.gp_loss = GPFullLoss()
+
         self.hm_loss = HeatmapLoss()
         self.conv1 = nn.Conv2d(1, 64, padding=3, kernel_size=7,
                                stride=2, bias=False)
@@ -414,11 +421,16 @@ class Estimator(nn.Module):
 
     def calc_loss(self, pred_heatmaps, gt_heatmap):
         heatmap_loss = []
+        gradientprof_loss = []
         for stack in range(self.stacks):
             heatmap_loss.append(self.hm_loss(pred_heatmaps[stack], gt_heatmap))
+            gradientprof_loss.append(self.gp_loss(pred_heatmaps[stack], gt_heatmap))
         heatmap_loss = torch.stack(heatmap_loss, dim=0)
         heatmap_loss = torch.sum(heatmap_loss)
-        return heatmap_loss
+
+        gradientprof_loss = torch.stack(gradientprof_loss, dim=0)
+        gradientprof_loss = torch.sum(gradientprof_loss)
+        return heatmap_loss + self.gp_loss_lambda * gradientprof_loss
 
 
 class Regressor(nn.Module):
