@@ -125,7 +125,7 @@ def get_gt_coords(dataset, affine_matrix, coord_x, coord_y):
 def get_gt_heatmap(dataset, gt_coords):
     coord_x, coord_y, gt_heatmap = [], [], []
     for index in range(boundary_num):
-        gt_heatmap.append(np.ones((64, 64)))
+        gt_heatmap.append(np.ones((heatmap_size, heatmap_size)))
         gt_heatmap[index].tolist()
     boundary_x = {'chin': [], 'leb': [], 'reb':  [], 'bon':  [], 'breath': [], 'lue':  [], 'lle': [],
                   'rue':  [], 'rle': [], 'usul': [], 'lsul': [], 'usll':   [], 'lsll': []}
@@ -179,12 +179,12 @@ def get_gt_heatmap(dataset, gt_coords):
         gt_heatmap[index] = np.uint8(gt_heatmap[index])
         gt_heatmap[index] = cv2.distanceTransform(gt_heatmap[index], cv2.DIST_L2, 5)
         gt_heatmap[index] = np.float32(np.array(gt_heatmap[index]))
-        gt_heatmap[index] = gt_heatmap[index].reshape(64*64)
+        gt_heatmap[index] = gt_heatmap[index].reshape(heatmap_size*heatmap_size)
         (gt_heatmap[index])[(gt_heatmap[index]) < 3. * args.sigma] = \
             np.exp(-(gt_heatmap[index])[(gt_heatmap[index]) < 3 * args.sigma] *
                    (gt_heatmap[index])[(gt_heatmap[index]) < 3 * args.sigma] / 2. * args.sigma * args.sigma)
         (gt_heatmap[index])[(gt_heatmap[index]) >= 3. * args.sigma] = 0.
-        gt_heatmap[index] = gt_heatmap[index].reshape([64, 64])
+        gt_heatmap[index] = gt_heatmap[index].reshape([heatmap_size, heatmap_size])
     return np.array(gt_heatmap)
 
 
@@ -222,4 +222,9 @@ def get_item_from(dataset, split, annotation):
     gt_coords_xy = get_gt_coords(dataset, affine_matrix, coord_x_cropped, coord_y_cropped)
 
     gt_heatmap = get_gt_heatmap(dataset, gt_coords_xy)
+
+    # show_img(pic_crop)
+    # show_img(pic_affine)
+    # watch_gray_heatmap(gt_heatmap)
+
     return pic_affine, gt_coords_xy, gt_heatmap, coord_xy, bbox, annotation[-1]

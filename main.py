@@ -11,8 +11,10 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from scipy.interpolate import BSpline as spline
 
+face_detector_path = '/home/lichnost/.face_alignment/data/mmod_human_face_detector.dat'
 use_dataset = 'WFLW'
-use_epoch = '420'
+use_epoch = '425'
+save_imgs = False
 
 # load network
 devices = torch.device('cuda:0')
@@ -42,7 +44,7 @@ while cap.isOpened():      # isOpened()  检测摄像头是否处于打开状态
         if k == ord('c') or k == ord('C'):
             t_start = str(int(time.time()))
 
-            face_detector = dlib.cnn_face_detection_model_v1('/home/lichnost/.face_alignment/data/mmod_human_face_detector.dat')
+            face_detector = dlib.cnn_face_detection_model_v1(face_detector_path)
             rec = face_detector(img, 1)
 
             if len(rec) == 0:
@@ -94,7 +96,9 @@ while cap.isOpened():      # isOpened()  检测摄像头是否处于打开状态
                             -1
                         )
                     show_img(face_img, 'face_small_keypoint'+str(face_i), 500, 650, keep=True)
-                    cv2.imwrite('./pics/face_' + t + '_0.png', face_img)
+                    if save_imgs:
+                        cv2.imwrite('./pics/face_' + t + '_0.png', face_img)
+
 
                     heatmaps = F.interpolate(
                         pred_heatmaps[-1],
@@ -118,7 +122,9 @@ while cap.isOpened():      # isOpened()  检测摄像头是否处于打开状态
                     hm = cv2.imread('hm.png')
                     syn = cv2.addWeighted(face_img, 0.4, hm, 0.6, 0)
                     show_img(syn, 'face_small_boundary'+str(face_i), 900, 650)
-                    cv2.imwrite('./pics/face_' + t + '_1.png', syn)
+
+                    if save_imgs:
+                        cv2.imwrite('./pics/face_' + t + '_1.png', syn)
 
                     pred_coords_copy = copy.deepcopy(pred_coords)
                     for i in range(kp_num[use_dataset]):
@@ -139,7 +145,10 @@ while cap.isOpened():      # isOpened()  检测摄像头是否处于打开状态
                             -1
                         )
                 show_img(img, 'face_whole', 1400, 650)
-                cv2.imwrite('./pics/face_' + t_start + '.png', img)
+
+                if save_imgs:
+                    cv2.imwrite('./pics/face_' + t_start + '.png', img)
+
                 face_keypoint_coords = []
 
         if k == ord('q') or k == ord('Q'):
