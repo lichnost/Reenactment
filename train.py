@@ -4,14 +4,10 @@ import torch.nn as nn
 from models import WingLoss, Estimator, Regressor, Discrim
 from dataset import GeneralDataset
 from utils import *
+from utils.args import parse_args
 import tqdm
 
 from torch.utils.tensorboard import SummaryWriter
-
-if not os.path.exists(args.save_folder):
-    os.mkdir(args.save_folder)
-if not os.path.exists(args.resume_folder):
-    os.mkdir(args.resume_folder)
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -66,7 +62,7 @@ def train(arg):
         criterion = WingLoss(w=arg.wingloss_w, epsilon=arg.wingloss_e)
 
     print('Loading dataset ...')
-    trainset = GeneralDataset(dataset=arg.dataset)
+    trainset = GeneralDataset(arg, dataset=arg.dataset)
     print('Loading dataset done!')
 
     d_fake = (torch.zeros(arg.batch_size, 13)).cuda(device=devices[0]) if arg.GAN \
@@ -118,7 +114,7 @@ def train(arg):
             optimizer_regressor.step()
 
             d_fake = (calc_d_fake(arg.dataset, out.detach(), gt_coords_xy, true_batchsize,
-                                  arg.batch_size)).cuda(device=devices[0])
+                                  arg.batch_size, arg.delta, arg.theta)).cuda(device=devices[0])
 
             sum_loss_regressor += loss_regressor
 
@@ -184,7 +180,7 @@ def train_with_gt_heatmap(arg):
         criterion = WingLoss(w=arg.wingloss_w, epsilon=arg.wingloss_e)
 
     print('Loading dataset ...')
-    trainset = GeneralDataset(dataset=arg.dataset)
+    trainset = GeneralDataset(arg, dataset=arg.dataset)
     print('Loading dataset done!')
 
     print('Start training ...')
@@ -273,7 +269,7 @@ def train_with_gt_heatmap_new(arg):
         criterion = WingLoss(w=arg.wingloss_w, epsilon=arg.wingloss_e)
 
     print('Loading dataset ...')
-    trainset = GeneralDataset(dataset=arg.dataset)
+    trainset = GeneralDataset(arg, dataset=arg.dataset)
     print('Loading dataset done!')
 
     print('Start training ...')
@@ -322,7 +318,14 @@ def train_with_gt_heatmap_new(arg):
 
 
 if __name__ == '__main__':
-    if args.gt_heatmaps:
-        train_with_gt_heatmap(args)
+    arg = parse_args()
+
+    if not os.path.exists(arg.save_folder):
+        os.mkdir(arg.save_folder)
+    if not os.path.exists(arg.resume_folder):
+        os.mkdir(arg.resume_folder)
+
+    if arg.gt_heatmaps:
+        train_with_gt_heatmap(arg)
     else:
-        train(args)
+        train(arg)

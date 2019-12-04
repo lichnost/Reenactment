@@ -56,14 +56,14 @@ def create_model(arg, devices_list):
     return estimator, regressor, discrim
 
 
-def calc_d_fake(dataset, pred_coords, gt_coords, bcsize, bcsize_set):
+def calc_d_fake(dataset, pred_coords, gt_coords, bcsize, bcsize_set, delta, theta):
     error_regressor = (pred_coords - gt_coords) ** 2
     dist_regressor = torch.zeros(bcsize, kp_num[dataset])
     dfake = torch.zeros(bcsize_set, boundary_num)
     for batch in range(bcsize):
         dist_regressor[batch, :] = \
             (error_regressor[batch][:2*kp_num[dataset]:2] + error_regressor[batch][1:2*kp_num[dataset]:2]) \
-            < args.theta*args.theta
+            < theta*theta
     for batch_index in range(bcsize):
         for boundary_index in range(boundary_num):
             for kp_index in range(
@@ -77,7 +77,7 @@ def calc_d_fake(dataset, pred_coords, gt_coords, bcsize, bcsize_set):
                     dist_regressor[batch_index][duplicate_point[dataset][boundary_keys[boundary_index]]] == 1:
                 dfake[batch_index][boundary_index] += 1
         for boundary_index in range(boundary_num):
-            if dfake[batch_index][boundary_index] / point_num_per_boundary[dataset][boundary_index] < args.delta:
+            if dfake[batch_index][boundary_index] / point_num_per_boundary[dataset][boundary_index] < delta:
                 dfake[batch_index][boundary_index] = 0.
             else:
                 dfake[batch_index][boundary_index] = 1.

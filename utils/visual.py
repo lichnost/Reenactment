@@ -66,7 +66,7 @@ def eval_heatmap(arg, heatmaps, img_name, bbox, save_img=False):
         name = (img_name[0]).split('/')[-1]
         fig.savefig('./imgs/'+name.split('.')[0]+'_hm.png', format='png', transparent=True, dpi=300, pad_inches=0)
 
-        pic = cv2.imread(dataset_route[arg.dataset] + img_name[0])
+        pic = cv2.imread(dataset_route(arg.dataset_route, arg.dataset) + img_name[0])
         position_before = np.float32([
             [int(bbox[0]), int(bbox[1])],
             [int(bbox[0]), int(bbox[3])],
@@ -88,7 +88,7 @@ def eval_heatmap(arg, heatmaps, img_name, bbox, save_img=False):
 
 
 def eval_pred_points(arg, pred_coords, img_name, bbox, save_img=False):
-    pic = cv2.imread(dataset_route[arg.dataset] + img_name[0])
+    pic = cv2.imread(dataset_route(arg.dataset_route, arg.dataset) + img_name[0])
     position_before = np.float32([
         [int(bbox[0]), int(bbox[1])],
         [int(bbox[0]), int(bbox[3])],
@@ -115,7 +115,7 @@ def eval_pred_points(arg, pred_coords, img_name, bbox, save_img=False):
 
 
 def eval_gt_pred_points(arg, gt_coords, pred_coords, img_name, bbox, save_img=False):
-    pic = cv2.imread(dataset_route[arg.dataset] + img_name[0])
+    pic = cv2.imread(dataset_route(arg.dataset_route, arg.dataset) + img_name[0])
     position_before = np.float32([
         [int(bbox[0]), int(bbox[1])],
         [int(bbox[0]), int(bbox[3])],

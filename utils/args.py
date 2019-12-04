@@ -69,8 +69,10 @@ parser.add_argument('--norm_way',           default='inter_ocular',      type=st
 parser.add_argument('--eval_visual',        default=True ,               type=bool)
 parser.add_argument('--save_img',           default=True,                type=bool)
 
-args = parser.parse_args()
+def parse_args():
+    result = parser.parse_args()
 
-assert args.resume_epoch < args.step_values[0]
-assert args.resume_epoch < args.max_epoch
-assert args.step_values[-1] < args.max_epoch
+    assert result.resume_epoch < result.step_values[0]
+    assert result.resume_epoch < result.max_epoch
+    assert result.step_values[-1] < result.max_epoch
+    return result

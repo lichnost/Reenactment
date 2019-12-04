@@ -4,6 +4,7 @@ import numpy as np
 from dataset import GeneralDataset
 from models import *
 from utils import *
+from utils.args import parse_args
 
 
 def evaluate(arg):
@@ -12,7 +13,7 @@ def evaluate(arg):
     failure_count = 0
     max_threshold = arg.max_threshold
 
-    testset = GeneralDataset(dataset=arg.dataset, split=arg.split)
+    testset = GeneralDataset(arg, dataset=arg.dataset, split=arg.split)
     dataloader = torch.utils.data.DataLoader(testset, batch_size=1, shuffle=False, pin_memory=True)
 
     print('*****  Normal Evaluating  *****')
@@ -85,7 +86,7 @@ def evaluate_with_gt_heatmap(arg):
     failure_count = 0
     max_threshold = arg.max_threshold
 
-    testset = GeneralDataset(dataset=arg.dataset, split=arg.split)
+    testset = GeneralDataset(arg, dataset=arg.dataset, split=arg.split)
     dataloader = torch.utils.data.DataLoader(testset, batch_size=1, shuffle=False, pin_memory=True)
 
     print('*****  Evaluating with ground truth heatmap  *****')
@@ -149,7 +150,7 @@ def evaluate_nparts(arg):
     devices = torch.device('cuda:' + arg.gpu_id)
     error_rate = []
 
-    testset = GeneralDataset(dataset=arg.dataset, split=arg.split)
+    testset = GeneralDataset(arg, dataset=arg.dataset, split=arg.split)
     dataloader = torch.utils.data.DataLoader(testset, batch_size=1, shuffle=False, pin_memory=True)
 
     print('*****  Evaluating Different Parts  *****')
@@ -217,7 +218,8 @@ def evaluate_nparts(arg):
 
 
 if __name__ == '__main__':
-    if args.gt_heatmaps:
-        evaluate_with_gt_heatmap(args)
+    arg = parse_args()
+    if arg.gt_heatmaps:
+        evaluate_with_gt_heatmap(arg)
     else:
-        evaluate(args)
+        evaluate(arg)

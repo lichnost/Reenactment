@@ -1,5 +1,4 @@
 from .dataset_info import *
-from .args import args
 from .pdb import pdb
 from .visual import *
 
@@ -10,9 +9,9 @@ import numpy as np
 from scipy.interpolate import splprep, splev
 
 
-def get_annotations_list(dataset, split, ispdb=False):
+def get_annotations_list(ds_route, dataset, split, crop_size, ispdb=False):
     annotations = []
-    annotation_file = open(dataset_route[dataset] + dataset + '_' + split + '_annos.txt')
+    annotation_file = open(dataset_route(ds_route, dataset) + dataset + '_' + split + '_annos.txt')
 
     for line in range(dataset_size[dataset][split]):
         annotations.append(annotation_file.readline().rstrip().split())
@@ -28,8 +27,8 @@ def get_annotations_list(dataset, split, ispdb=False):
                                           [int(line[-7]), int(line[-4])],
                                           [int(line[-5]), int(line[-4])]])
             position_after = np.float32([[0, 0],
-                                         [0, args.crop_size - 1],
-                                         [args.crop_size - 1, args.crop_size - 1]])
+                                         [0, crop_size - 1],
+                                         [crop_size - 1, crop_size - 1]])
             crop_matrix = cv2.getAffineTransform(position_before, position_after)
             coord_x_after_crop = crop_matrix[0][0] * coord_x + crop_matrix[0][1] * coord_y + crop_matrix[0][2]
             coord_y_after_crop = crop_matrix[1][0] * coord_x + crop_matrix[1][1] * coord_y + crop_matrix[1][2]
@@ -56,7 +55,7 @@ def convert_img_to_gray(img):
         raise Exception("img shape wrong!\n")
 
 
-def get_random_transform_param(split, bbox):
+def get_random_transform_param(split, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical):
     translation = 0
     trans_dir = 0
     rotation = 0
@@ -67,13 +66,13 @@ def get_random_transform_param(split, bbox):
     gaussian_blur = 0
     if split in ['train']:
         random.seed(time.time())
-        translate_param = int(args.trans_ratio * abs(bbox[2] - bbox[0]))
+        translate_param = int(trans_ratio * abs(bbox[2] - bbox[0]))
         translation = random.randint(-translate_param, translate_param)
         trans_dir = random.randint(0, 3)  # LU:0 RU:1 LL:2 RL:3
-        rotation = random.uniform(-args.rotate_limit, args.rotate_limit)
-        scaling = random.uniform(1-args.scale_ratio, 1+args.scale_ratio)
-        scaling_horizontal = random.uniform(1 - args.scale_horizontal, 1 + args.scale_horizontal)
-        scaling_vertical = random.uniform(1 - args.scale_vertical, 1+args.scale_vertical)
+        rotation = random.uniform(-rotate_limit, rotate_limit)
+        scaling = random.uniform(1-scale_ratio, 1+scale_ratio)
+        scaling_horizontal = random.uniform(1 - scale_horizontal, 1 + scale_horizontal)
+        scaling_vertical = random.uniform(1 - scale_vertical, 1+scale_vertical)
         flip = random.randint(0, 1)
         gaussian_blur = random.randint(0, 1)
     return translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur
@@ -104,10 +103,10 @@ def pic_normalize(pic):  # for accelerate, now support gray pic only
     return np.float32(pic)
 
 
-def get_cropped_coords(dataset, crop_matrix, coord_x, coord_y, flip=0):
+def get_cropped_coords(dataset, crop_matrix, coord_x, coord_y, crop_size, flip=0):
     coord_x, coord_y = np.array(coord_x), np.array(coord_y)
     temp_x = crop_matrix[0][0] * coord_x + crop_matrix[0][1] * coord_y + crop_matrix[0][2] if flip == 0 else \
-        float(args.crop_size) - (crop_matrix[0][0] * coord_x + crop_matrix[0][1] * coord_y + crop_matrix[0][2]) - 1
+        float(crop_size) - (crop_matrix[0][0] * coord_x + crop_matrix[0][1] * coord_y + crop_matrix[0][2]) - 1
     temp_y = crop_matrix[1][0] * coord_x + crop_matrix[1][1] * coord_y + crop_matrix[1][2]
     if flip:
         temp_x = temp_x[np.array(flip_relation[dataset])[:, 1]]
@@ -122,7 +121,7 @@ def get_gt_coords(dataset, affine_matrix, coord_x, coord_y):
     return np.array(np.float32(out))
 
 
-def get_gt_heatmap(dataset, gt_coords):
+def get_gt_heatmap(dataset, gt_coords, crop_size, sigma):
     coord_x, coord_y, gt_heatmap = [], [], []
     for index in range(boundary_num):
         gt_heatmap.append(np.ones((heatmap_size, heatmap_size)))
@@ -133,8 +132,8 @@ def get_gt_heatmap(dataset, gt_coords):
                   'rue':  [], 'rle': [], 'usul': [], 'lsul': [], 'usll':   [], 'lsll': []}
     points = {'chin': [], 'leb': [], 'reb':  [], 'bon':  [], 'breath': [], 'lue':  [], 'lle': [],
               'rue':  [], 'rle': [], 'usul': [], 'lsul': [], 'usll':   [], 'lsll': []}
-    resize_matrix = cv2.getAffineTransform(np.float32([[0, 0], [0, args.crop_size-1],
-                                                       [args.crop_size-1, args.crop_size-1]]),
+    resize_matrix = cv2.getAffineTransform(np.float32([[0, 0], [0, crop_size-1],
+                                                       [crop_size-1, crop_size-1]]),
                                            np.float32([[0, 0], [0, heatmap_size-1],
                                                        [heatmap_size-1, heatmap_size-1]]))
     for kp_index in range(kp_num[dataset]):
@@ -180,23 +179,23 @@ def get_gt_heatmap(dataset, gt_coords):
         gt_heatmap[index] = cv2.distanceTransform(gt_heatmap[index], cv2.DIST_L2, 5)
         gt_heatmap[index] = np.float32(np.array(gt_heatmap[index]))
         gt_heatmap[index] = gt_heatmap[index].reshape(heatmap_size*heatmap_size)
-        (gt_heatmap[index])[(gt_heatmap[index]) < 3. * args.sigma] = \
-            np.exp(-(gt_heatmap[index])[(gt_heatmap[index]) < 3 * args.sigma] *
-                   (gt_heatmap[index])[(gt_heatmap[index]) < 3 * args.sigma] / 2. * args.sigma * args.sigma)
-        (gt_heatmap[index])[(gt_heatmap[index]) >= 3. * args.sigma] = 0.
+        (gt_heatmap[index])[(gt_heatmap[index]) < 3. * sigma] = \
+            np.exp(-(gt_heatmap[index])[(gt_heatmap[index]) < 3 * sigma] *
+                   (gt_heatmap[index])[(gt_heatmap[index]) < 3 * sigma] / 2. * sigma * sigma)
+        (gt_heatmap[index])[(gt_heatmap[index]) >= 3. * sigma] = 0.
         gt_heatmap[index] = gt_heatmap[index].reshape([heatmap_size, heatmap_size])
     return np.array(gt_heatmap)
 
 
-def get_item_from(dataset, split, annotation):
-    pic = cv2.imread(dataset_route[dataset]+annotation[-1])
-    pic = convert_img_to_gray(pic) if not args.RGB else pic
+def get_item_from(ds_route, dataset, split, annotation, crop_size, RGB, sigma, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical):
+    pic = cv2.imread(dataset_route(ds_route, dataset)+annotation[-1])
+    pic = convert_img_to_gray(pic) if not RGB else pic
     coord_x = list(map(float, annotation[:2*kp_num[dataset]:2]))
     coord_y = list(map(float, annotation[1:2*kp_num[dataset]:2]))
     coord_xy = np.array(np.float32(list(map(float, annotation[:2*kp_num[dataset]]))))
     bbox = np.array(list(map(int, annotation[-7:-3])))
 
-    translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(split, bbox)
+    translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(split, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical)
 
     horizontal_add = (bbox[3] - bbox[1]) * scaling_horizontal
     vertical_add = (bbox[2] - bbox[0]) * scaling_vertical
@@ -209,19 +208,19 @@ def get_item_from(dataset, split, annotation):
                                   [int(bbox[2]) + pow(-1, trans_dir+1)*translation,
                                    int(bbox[3]) + pow(-1, trans_dir//2+1)*translation]])
     position_after = np.float32([[0, 0],
-                                 [0, args.crop_size - 1],
-                                 [args.crop_size - 1, args.crop_size - 1]])
+                                 [0, crop_size - 1],
+                                 [crop_size - 1, crop_size - 1]])
     crop_matrix = cv2.getAffineTransform(position_before, position_after)
-    pic_crop = cv2.warpAffine(pic, crop_matrix, (args.crop_size, args.crop_size))
-    pic_crop = further_transform(pic_crop, bbox, flip, gaussian_blur) if args.split in ['train'] else pic_crop
-    affine_matrix = get_affine_matrix(args.crop_size, rotation, scaling)
-    pic_affine = cv2.warpAffine(pic_crop, affine_matrix, (args.crop_size, args.crop_size))
-    pic_affine = pic_normalize(pic_affine) if not args.RGB else pic_affine
+    pic_crop = cv2.warpAffine(pic, crop_matrix, (crop_size, crop_size))
+    pic_crop = further_transform(pic_crop, bbox, flip, gaussian_blur) if split in ['train'] else pic_crop
+    affine_matrix = get_affine_matrix(crop_size, rotation, scaling)
+    pic_affine = cv2.warpAffine(pic_crop, affine_matrix, (crop_size, crop_size))
+    pic_affine = pic_normalize(pic_affine) if not RGB else pic_affine
 
-    coord_x_cropped, coord_y_cropped = get_cropped_coords(dataset, crop_matrix, coord_x, coord_y, flip=flip)
+    coord_x_cropped, coord_y_cropped = get_cropped_coords(dataset, crop_matrix, coord_x, coord_y, crop_size, flip=flip)
     gt_coords_xy = get_gt_coords(dataset, affine_matrix, coord_x_cropped, coord_y_cropped)
 
-    gt_heatmap = get_gt_heatmap(dataset, gt_coords_xy)
+    gt_heatmap = get_gt_heatmap(dataset, gt_coords_xy, crop_size, sigma)
 
     # show_img(pic_crop)
     # show_img(pic_affine)

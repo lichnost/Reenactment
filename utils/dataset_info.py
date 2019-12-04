@@ -1,4 +1,3 @@
-from .args import args
 
 heatmap_size = 64
 boundary_num = 13
@@ -28,12 +27,13 @@ dataset_pdb_numbins = {
     'WFLW': 13
 }
 
-dataset_route = {
-    '300W': args.dataset_route+'/300W/',
-    'AFLW': args.dataset_route+'/AFLW/',
-    'COFW': args.dataset_route+'/COFW/',
-    'WFLW': args.dataset_route+'/WFLW/'
-}
+def dataset_route(dataset_route, dataset):
+    return {
+    '300W': dataset_route+'/300W/',
+    'AFLW': dataset_route+'/AFLW/',
+    'COFW': dataset_route+'/COFW/',
+    'WFLW': dataset_route+'/WFLW/'
+    }[dataset]
 
 dataset_size = {
     '300W': {
