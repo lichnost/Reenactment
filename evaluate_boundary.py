@@ -1,7 +1,7 @@
 import tqdm
 import time
 import numpy as np
-from dataset import GeneralDataset
+from utils.dataset import GeneralDataset
 from models import *
 from utils import *
 from utils.args import parse_args
@@ -20,19 +20,14 @@ def evaluate(arg):
     print('Evaluating parameters:\n' +
           '# Dataset:            ' + arg.dataset + '\n' +
           '# Dataset split:      ' + arg.split + '\n' +
-          '# Epoch of the model: ' + str(arg.eval_epoch) + '\n' +
+          '# Epoch of the model estimator: ' + str(arg.eval_epoch_estimator) + '\n' +
+          '# Epoch of the model regressor: ' + str(arg.eval_epoch_regressor) + '\n' +
           '# Normalize way:      ' + arg.norm_way + '\n' +
           '# Max threshold:      ' + str(arg.max_threshold) + '\n')
     
     print('Loading network ...')
-    estimator = Estimator(gp_loss_type=arg.gp_loss_type, gp_loss_lambda=arg.gp_loss_lambda,
-                          stacks=arg.hour_stack, msg_pass=arg.msg_pass)
-    regressor = Regressor(fuse_stages=arg.fuse_stage, output=2*kp_num[arg.dataset])
-    estimator = load_weights(estimator, arg.save_folder+'estimator_'+str(arg.eval_epoch)+'.pth', devices)
-    regressor = load_weights(regressor, arg.save_folder+arg.dataset+'_regressor_'+str(arg.eval_epoch)+'.pth', devices)
-    if arg.cuda:
-        estimator = estimator.cuda(device=devices)
-        regressor = regressor.cuda(device=devices)
+    estimator = create_model_estimator(arg, devices, eval=True)
+    regressor = create_model_regressor(arg, devices, eval=True)
     estimator.eval()
     regressor.eval()
     print('Loading network done!\nStart testing ...')
@@ -42,13 +37,12 @@ def evaluate(arg):
         for data in tqdm.tqdm(dataloader):
             start = time.time()
 
-            input_images, gt_coords_xy, gt_heatmap, coords_xy, bbox, img_name = data
+            _, _, input_images, _, gt_coords_xy, gt_heatmap, coords_xy, bbox, img_name = data
 
             gt_coords_xy = gt_coords_xy.squeeze().numpy()
             bbox = bbox.squeeze().numpy()
             error_normalize_factor = calc_normalize_factor(arg.dataset, coords_xy.numpy(), arg.norm_way) \
                 if arg.norm_way in ['inter_pupil', 'inter_ocular'] else (bbox[2] - bbox[0])
-            input_images = input_images.unsqueeze(1)
             input_images = input_images.cuda(device=devices)
 
             pred_heatmaps = estimator(input_images)
@@ -93,16 +87,13 @@ def evaluate_with_gt_heatmap(arg):
     print('Evaluating parameters:\n' +
           '# Dataset:            ' + arg.dataset + '\n' +
           '# Dataset split:      ' + arg.split + '\n' +
-          '# Epoch of the model: ' + str(arg.eval_epoch) + '\n' +
+          '# Epoch of the model estimator: ' + str(arg.eval_epoch_estimator) + '\n' +
+          '# Epoch of the model regressor: ' + str(arg.eval_epoch_regressor) + '\n' +
           '# Normalize way:      ' + arg.norm_way + '\n' +
           '# Max threshold:      ' + str(arg.max_threshold) + '\n')
 
     print('Loading network...')
-    regressor = Regressor(fuse_stages=arg.fuse_stage, output=2 * kp_num[arg.dataset])
-    regressor = load_weights(regressor, arg.save_folder + arg.dataset + '_regressor_' + str(arg.eval_epoch) + '.pth',
-                             devices)
-    if arg.cuda:
-        regressor = regressor.cuda(device=devices)
+    regressor = create_model_regressor(arg, devices, eval=True)
     regressor.eval()
     print('Loading network done!\nStart testing...')
 
@@ -111,11 +102,10 @@ def evaluate_with_gt_heatmap(arg):
         for data in tqdm.tqdm(dataloader):
             start = time.time()
 
-            input_images, gt_coords_xy, gt_heatmap, coords_xy, bbox, img_name = data
+            _, input_images, _, gt_coords_xy, gt_heatmap, coords_xy, bbox, img_name = data
             bbox = bbox.squeeze().numpy()
             error_normalize_factor = calc_normalize_factor(arg.dataset, coords_xy.numpy(), arg.norm_way) \
                 if arg.norm_way in ['inter_pupil', 'inter_ocular'] else (bbox[2] - bbox[0])
-            input_images = input_images.unsqueeze(1)
             input_images = input_images.cuda(device=devices)
             gt_heatmap = gt_heatmap.cuda(device=devices)
 
@@ -157,19 +147,14 @@ def evaluate_nparts(arg):
     print('Evaluating parameters:\n' +
           '# Dataset:            ' + arg.dataset + '\n' +
           '# Dataset split:      ' + arg.split + '\n' +
-          '# Epoch of the model: ' + str(arg.eval_epoch) + '\n' +
+          '# Epoch of the model estimator: ' + str(arg.eval_epoch_estimator) + '\n' +
+          '# Epoch of the model regressor: ' + str(arg.eval_epoch_regressor) + '\n' +
           '# Normalize way:      ' + arg.norm_way + '\n' +
           '# Max threshold:      ' + str(arg.max_threshold) + '\n')
 
     print('Loading network ...')
-    estimator = Estimator(loss_type=arg.hm_loss_type, stacks=arg.hour_stack, msg_pass=arg.msg_pass)
-    regressor = Regressor(fuse_stages=arg.fuse_stage, output=2 * kp_num[arg.dataset])
-    estimator = load_weights(estimator, arg.save_folder + 'estimator_' + str(arg.eval_epoch) + '.pth', devices)
-    regressor = load_weights(regressor, arg.save_folder + arg.dataset + '_regressor_' + str(arg.eval_epoch) + '.pth',
-                             devices)
-    if arg.cuda:
-        estimator = estimator.cuda(device=devices)
-        regressor = regressor.cuda(device=devices)
+    estimator = create_model_estimator(arg, devices, eval=True)
+    regressor = create_model_regressor(arg, devices, eval=True)
     estimator.eval()
     regressor.eval()
     print('Loading network done!\nStart testing ...')
@@ -179,12 +164,11 @@ def evaluate_nparts(arg):
         for data in tqdm.tqdm(dataloader):
             start = time.time()
 
-            input_images, gt_coords_xy, gt_heatmap, coords_xy, bbox, img_name = data
+            _, input_images, _, gt_coords_xy, gt_heatmap, coords_xy, bbox, img_name = data
             gt_coords_xy = gt_coords_xy.squeeze().numpy()
             bbox = bbox.squeeze().numpy()
             error_normalize_factor = calc_normalize_factor(arg.dataset, coords_xy.numpy(), arg.norm_way) \
                 if arg.norm_way in ['inter_pupil', 'inter_ocular'] else (bbox[2] - bbox[0])
-            input_images = input_images.unsqueeze(1)
             input_images = input_images.cuda(device=devices)
 
             pred_heatmaps = estimator(input_images)

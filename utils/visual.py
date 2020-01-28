@@ -7,9 +7,10 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import BSpline as spline
 
 
-def show_img(pic, name='pic', x=0, y=0, wait=0, keep=False):
+def show_img(pic, name='pic', x=-1, y=-1, wait=0, keep=False):
     cv2.imshow(name, pic)
-    cv2.moveWindow(name, x, y)
+    if x != -1 and y != -1:
+        cv2.moveWindow(name, x, y)
     if keep is False:
         cv2.waitKey(wait)
         cv2.destroyAllWindows()
@@ -66,7 +67,7 @@ def eval_heatmap(arg, heatmaps, img_name, bbox, save_img=False):
         name = (img_name[0]).split('/')[-1]
         fig.savefig('./imgs/'+name.split('.')[0]+'_hm.png', format='png', transparent=True, dpi=300, pad_inches=0)
 
-        pic = cv2.imread(dataset_route(arg.dataset_route, arg.dataset) + img_name[0])
+        pic = cv2.imread(arg.dataset_route[arg.dataset] + img_name[0])
         position_before = np.float32([
             [int(bbox[0]), int(bbox[1])],
             [int(bbox[0]), int(bbox[3])],
@@ -88,7 +89,7 @@ def eval_heatmap(arg, heatmaps, img_name, bbox, save_img=False):
 
 
 def eval_pred_points(arg, pred_coords, img_name, bbox, save_img=False):
-    pic = cv2.imread(dataset_route(arg.dataset_route, arg.dataset) + img_name[0])
+    pic = cv2.imread(arg.dataset_route[arg.dataset] + img_name[0])
     position_before = np.float32([
         [int(bbox[0]), int(bbox[1])],
         [int(bbox[0]), int(bbox[3])],
@@ -115,7 +116,7 @@ def eval_pred_points(arg, pred_coords, img_name, bbox, save_img=False):
 
 
 def eval_gt_pred_points(arg, gt_coords, pred_coords, img_name, bbox, save_img=False):
-    pic = cv2.imread(dataset_route(arg.dataset_route, arg.dataset) + img_name[0])
+    pic = cv2.imread(arg.dataset_route[arg.dataset] + img_name[0])
     position_before = np.float32([
         [int(bbox[0]), int(bbox[1])],
         [int(bbox[0]), int(bbox[3])],

@@ -24,16 +24,18 @@ dataset_pdb_numbins = {
     '300W': 9,
     'AFLW': 17,
     'COFW': 7,
-    'WFLW': 13
+    'WFLW': 13,
+    'Faces': 13
 }
 
-def dataset_route(dataset_route, dataset):
+def init_dataset_route(dataset_route):
     return {
     '300W': dataset_route+'/300W/',
     'AFLW': dataset_route+'/AFLW/',
     'COFW': dataset_route+'/COFW/',
-    'WFLW': dataset_route+'/WFLW/'
-    }[dataset]
+    'WFLW': dataset_route+'/WFLW/',
+    'Faces': dataset_route+'/Faces/'
+    }
 
 dataset_size = {
     '300W': {
@@ -42,11 +44,11 @@ dataset_size = {
         'challenge_subset': 135,
         'fullset':          689,
         '300W_testset':     600,
-        'COFW68':           507  # 该数据集用于300W数据集上训练模型的测试
+        'COFW68':           507  # This dataset is used to test the training model on the 300W dataset
     },
     'AFLW': {
         'train':            20000,
-        'test':             24386,
+        'test':             4386,
         'frontal':          1314
     },
     'COFW': {
@@ -62,6 +64,10 @@ dataset_size = {
         'makeup':           206,
         'occlusion':        736,
         'blur':             773
+    },
+    'Faces': {
+        'PavelSemenov':    5053,
+        'Adush':           7089
     }
 }
 
@@ -69,24 +75,26 @@ kp_num = {
     '300W': 68, 
     'AFLW': 19,
     'COFW': 29, 
-    'WFLW': 98
+    'WFLW': 98,
+    'Faces': 98
 }
 
 point_num_per_boundary = {
     '300W': [17., 5., 5., 4., 5., 4., 4., 4., 4., 7., 5., 5., 7.],
     'AFLW': [1.,  3., 3., 1., 2., 3., 3., 3., 3., 3., 3., 3., 3.],
     'COFW': [1.,  3., 3., 1., 3., 3., 3., 3., 3., 3., 1., 1., 3.],
-    'WFLW': [33., 9., 9., 4., 5., 5., 5., 5., 5., 7., 5., 5., 7.]
+    'WFLW': [33., 9., 9., 4., 5., 5., 5., 5., 5., 7., 5., 5., 7.],
+    'Faces': [33., 9., 9., 4., 5., 5., 5., 5., 5., 7., 5., 5., 7.]
 }
 
-boundary_special = {  # 有些边界线条使用的关键点和其他边界形成不连续交集，特殊处理
-    'lle':  ['300W', 'COFW', 'WFLW'],
-    'rle':  ['300W', 'COFW', 'WFLW'],
-    'usll': ['300W', 'WFLW'],
-    'lsll': ['300W', 'COFW', 'WFLW']
+boundary_special = {  # Some boundary lines use key points and other boundaries to form discontinuous intersections, special treatment
+    'lle':  ['300W', 'COFW', 'WFLW', 'Faces'],
+    'rle':  ['300W', 'COFW', 'WFLW', 'Faces'],
+    'usll': ['300W', 'WFLW', 'Faces'],
+    'lsll': ['300W', 'COFW', 'WFLW', 'Faces']
 }
 
-duplicate_point = {  # 需要重复使用的关键点的序号，从0开始计数
+duplicate_point = {  # Sequence number of key points to be reused, counting from 0
     '300W': {
         'lle':  36,
         'rle':  42,
@@ -99,6 +107,12 @@ duplicate_point = {  # 需要重复使用的关键点的序号，从0开始计�
         'lsll': 21
     },
     'WFLW': {
+        'lle':  60,
+        'rle':  68,
+        'usll': 88,
+        'lsll': 76
+    },
+    'Faces': {
         'lle':  60,
         'rle':  68,
         'usll': 88,
@@ -123,6 +137,11 @@ point_range = {  # notice: this is 'range', the later number pluses 1; the order
         [25, 26], [26, 27], [23, 25]
     ],
     'WFLW': [
+        [0, 33],  [33, 38], [42, 47], [51, 55], [55, 60],
+        [60, 65], [64, 68], [68, 73], [72, 76], [76, 83],
+        [88, 93], [92, 96], [82, 88]
+    ],
+    'Faces': [
         [0, 33],  [33, 38], [42, 47], [51, 55], [55, 60],
         [60, 65], [64, 68], [68, 73], [72, 76], [76, 83],
         [88, 93], [92, 96], [82, 88]
@@ -175,17 +194,36 @@ flip_relation = {
         [84, 86], [85, 85], [86, 84], [87, 83], [88, 92], [89, 91],
         [90, 90], [91, 89], [92, 88], [93, 95], [94, 94], [95, 93],
         [96, 97], [97, 96]
+    ],
+    'Faces': [
+        [0, 32],  [1, 31],  [2, 30],  [3, 29],  [4, 28],  [5, 27],
+        [6, 26],  [7, 25],  [8, 24],  [9, 23],  [10, 22], [11, 21],
+        [12, 20], [13, 19], [14, 18], [15, 17], [16, 16], [17, 15],
+        [18, 14], [19, 13], [20, 12], [21, 11], [22, 10], [23, 9],
+        [24, 8],  [25, 7],  [26, 6],  [27, 5],  [28, 4],  [29, 3],
+        [30, 2],  [31, 1],  [32, 0],  [33, 46], [34, 45], [35, 44],
+        [36, 43], [37, 42], [38, 50], [39, 49], [40, 48], [41, 47],
+        [42, 37], [43, 36], [44, 35], [45, 34], [46, 33], [47, 41],
+        [48, 40], [49, 39], [50, 38], [51, 51], [52, 52], [53, 53],
+        [54, 54], [55, 59], [56, 58], [57, 57], [58, 56], [59, 55],
+        [60, 72], [61, 71], [62, 70], [63, 69], [64, 68], [65, 75],
+        [66, 74], [67, 73], [68, 64], [69, 63], [70, 62], [71, 61],
+        [72, 60], [73, 67], [74, 66], [75, 65], [76, 82], [77, 81],
+        [78, 80], [79, 79], [80, 78], [81, 77], [82, 76], [83, 87],
+        [84, 86], [85, 85], [86, 84], [87, 83], [88, 92], [89, 91],
+        [90, 90], [91, 89], [92, 88], [93, 95], [94, 94], [95, 93],
+        [96, 97], [97, 96]
     ]
 }
 
-lo_eye_corner_index_x = {'300W': 72, 'AFLW': 20, 'COFW': 26, 'WFLW': 120}
-lo_eye_corner_index_y = {'300W': 73, 'AFLW': 21, 'COFW': 27, 'WFLW': 121}
-ro_eye_corner_index_x = {'300W': 90, 'AFLW': 30, 'COFW': 38, 'WFLW': 144}
-ro_eye_corner_index_y = {'300W': 91, 'AFLW': 31, 'COFW': 39, 'WFLW': 145}
-l_eye_center_index_x = {'300W': [72, 74, 76, 78, 80, 82], 'AFLW': 22, 'COFW': 54, 'WFLW': 192}
-l_eye_center_index_y = {'300W': [73, 75, 77, 79, 81, 83], 'AFLW': 23, 'COFW': 55, 'WFLW': 193}
-r_eye_center_index_x = {'300W': [84, 86, 88, 90, 92, 94], 'AFLW': 28, 'COFW': 56, 'WFLW': 194}
-r_eye_center_index_y = {'300W': [85, 87, 89, 91, 93, 95], 'AFLW': 29, 'COFW': 57, 'WFLW': 195}
+lo_eye_corner_index_x = {'300W': 72, 'AFLW': 20, 'COFW': 26, 'WFLW': 120, 'Faces': 120}
+lo_eye_corner_index_y = {'300W': 73, 'AFLW': 21, 'COFW': 27, 'WFLW': 121, 'Faces': 121}
+ro_eye_corner_index_x = {'300W': 90, 'AFLW': 30, 'COFW': 38, 'WFLW': 144, 'Faces': 144}
+ro_eye_corner_index_y = {'300W': 91, 'AFLW': 31, 'COFW': 39, 'WFLW': 145, '': 145}
+l_eye_center_index_x = {'300W': [72, 74, 76, 78, 80, 82], 'AFLW': 22, 'COFW': 54, 'WFLW': 192, 'Faces': 192}
+l_eye_center_index_y = {'300W': [73, 75, 77, 79, 81, 83], 'AFLW': 23, 'COFW': 55, 'WFLW': 193, 'Faces': 193}
+r_eye_center_index_x = {'300W': [84, 86, 88, 90, 92, 94], 'AFLW': 28, 'COFW': 56, 'WFLW': 194, 'Faces': 194}
+r_eye_center_index_y = {'300W': [85, 87, 89, 91, 93, 95], 'AFLW': 29, 'COFW': 57, 'WFLW': 195, 'Faces': 195}
 
 nparts = {  # [chin, brow, nose, eyes, mouth], totally 5 parts
     '300W': [
@@ -193,5 +231,39 @@ nparts = {  # [chin, brow, nose, eyes, mouth], totally 5 parts
     ],
     'WFLW': [
         [0, 33], [33, 51], [51, 60],  [60, 76], [76, 96]
+    ],
+    'Faces': [
+        [0, 33], [33, 51], [51, 60],  [60, 76], [76, 96]
     ]
+}
+
+# [R, G, B]
+means_color = {
+    'Faces': {
+        'PavelSemenov' : [127.9747, 121.5213, 116.7318],
+        'Adush' : [134.8850, 113.0359, 106.5454]
+    }
+}
+
+# [R, G, B]
+stds_color = {
+    'Faces': {
+        'PavelSemenov' : [75.9127, 73.5458, 73.5602],
+        'Adush' : [48.1531, 52.9784, 54.2879]
+    }
+}
+
+means_gray = {
+    'Faces': {
+        'PavelSemenov': 122.9053,
+        'Adush': 118.8288
+    }
+}
+
+
+stds_gray = {
+    'Faces': {
+        'PavelSemenov': 73.9678,
+        'Adush': 50.1038
+    }
 }

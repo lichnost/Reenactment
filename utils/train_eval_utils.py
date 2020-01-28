@@ -32,28 +32,76 @@ def load_weights(net, pth_file, device):
     return net
 
 
-def create_model(arg, devices_list):
-    from models import Estimator, Discrim, Regressor
+def create_model_estimator(arg, devices_list, eval=False):
+    from models import Estimator
+    resume_epoch = arg.eval_epoch_estimator if eval else arg.resume_epoch
 
-    estimator = Estimator(gp_loss_type=arg.gp_loss_type, gp_loss_lambda=arg.gp_loss_lambda,
+    estimator = Estimator(gp_loss_lambda=arg.gp_loss_lambda,
                           stacks=arg.hour_stack, msg_pass=arg.msg_pass)
-    regressor = Regressor(fuse_stages=arg.fuse_stage, output=2*kp_num[arg.dataset])
-    discrim = Discrim() if arg.GAN else None
 
-    if arg.resume_epoch > 0:
-        estimator = load_weights(estimator, arg.resume_folder + 'estimator_' + str(arg.resume_epoch) + '.pth',
-                                 devices_list[0])
-        regressor = load_weights(regressor, arg.resume_folder + arg.dataset+'_regressor_' +
-                                 str(arg.resume_epoch) + '.pth', devices_list[0])
-        discrim = load_weights(discrim, arg.resume_folder + 'discrim_' + str(arg.resume_epoch) + '.pth',
-                               devices_list[0]) if arg.GAN else None
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'estimator_' + str(resume_epoch) + '.pth'
+        print('Loading estimator from ' + load_path)
+        estimator = load_weights(estimator, load_path, devices_list[0])
 
     if arg.cuda:
         estimator = estimator.cuda(device=devices_list[0])
-        regressor = regressor.cuda(device=devices_list[0])
-        discrim = discrim.cuda(device=devices_list[0]) if arg.GAN else None
 
-    return estimator, regressor, discrim
+    return estimator
+
+
+def create_model_regressor(arg, devices_list, eval=False):
+    from models import Regressor
+    resume_dataset = arg.eval_dataset_regressor if eval else arg.dataset
+    resume_epoch = arg.eval_epoch_regressor if eval else arg.resume_epoch
+
+    regressor = Regressor(fuse_stages=arg.fuse_stage, output=2*kp_num[arg.dataset])
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + resume_dataset+'_regressor_' + str(resume_epoch) + '.pth'
+        print('Loading regressor from ' + load_path)
+        regressor = load_weights(regressor, load_path, devices_list[0])
+
+    if arg.cuda:
+        regressor = regressor.cuda(device=devices_list[0])
+
+    return regressor
+
+
+def create_model_discriminator(arg, devices_list, eval=False):
+    from models import Discrim
+    resume_epoch = arg.eval_epoch_discriminator if eval else arg.resume_epoch
+
+    discrim = Discrim()
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'discrim_' + str(resume_epoch) + '.pth'
+        print('Loading discriminator from ' + load_path)
+        discrim = load_weights(discrim, load_path, devices_list[0])
+
+    if arg.cuda:
+        discrim = discrim.cuda(device=devices_list[0])
+
+    return discrim
+
+
+def create_model_decoder(arg, devices_list, eval=False):
+    from models import Decoder
+    resume_dataset = arg.eval_dataset_decoder if eval else arg.dataset
+    resume_split = arg.eval_split_decoder if eval else arg.split
+    resume_epoch = arg.eval_epoch_decoder if eval else arg.resume_epoch
+
+    decoder = Decoder()
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'decoder_' + resume_dataset + '_' + resume_split + '_' + str(resume_epoch) + '.pth'
+        print('Loading decoder from ' + load_path)
+        decoder = load_weights(decoder, load_path, devices_list[0])
+
+    if arg.cuda:
+        decoder = decoder.cuda(device=devices_list[0])
+
+    return decoder
 
 
 def calc_d_fake(dataset, pred_coords, gt_coords, bcsize, bcsize_set, delta, theta):
@@ -158,3 +206,7 @@ def calc_auc(dataset, split, error_rate, max_threshold):
 def get_heatmap_gray(heatmaps):
     result = torch.sum(heatmaps, dim=1)
     return result
+
+def coord_transform(xy, crop_matrix):
+    return (crop_matrix[0][0] * xy[0] + crop_matrix[0][1] * xy[1] + crop_matrix[0][2],
+            crop_matrix[1][0] * xy[0] + crop_matrix[1][1] * xy[1] + crop_matrix[1][2])

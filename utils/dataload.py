@@ -9,9 +9,13 @@ import numpy as np
 from scipy.interpolate import splprep, splev
 
 
-def get_annotations_list(ds_route, dataset, split, crop_size, ispdb=False):
+def get_annos_path(dataset_route, dataset, split):
+    return dataset_route + dataset + '_' + split.replace('/', '-') + '_annos.txt'
+
+
+def get_annotations_list(dataset_route, dataset, split, crop_size, ispdb=False):
     annotations = []
-    annotation_file = open(dataset_route(ds_route, dataset) + dataset + '_' + split + '_annos.txt')
+    annotation_file = open(get_annos_path(dataset_route[dataset], dataset, split))
 
     for line in range(dataset_size[dataset][split]):
         annotations.append(annotation_file.readline().rstrip().split())
@@ -46,16 +50,16 @@ def convert_img_to_gray(img):
     if img.shape[2] == 1:
         return img
     elif img.shape[2] == 4:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+        gray = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
         return gray
     elif img.shape[2] == 3:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         return gray
     else:
         raise Exception("img shape wrong!\n")
 
 
-def get_random_transform_param(split, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical):
+def get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical):
     translation = 0
     trans_dir = 0
     rotation = 0
@@ -64,7 +68,7 @@ def get_random_transform_param(split, bbox, trans_ratio, rotate_limit, scale_rat
     scaling_vertical = 0.0
     flip = 0
     gaussian_blur = 0
-    if split in ['train']:
+    if type in ['train']:
         random.seed(time.time())
         translate_param = int(trans_ratio * abs(bbox[2] - bbox[0]))
         translation = random.randint(-translate_param, translate_param)
@@ -92,15 +96,40 @@ def get_affine_matrix(crop_size, rotation, scaling):
     return cv2.getRotationMatrix2D(center, rotation, scaling)
 
 
-def pic_normalize(pic):  # for accelerate, now support gray pic only
+def pic_normalize_gray_single(pic, mean=None, std=None):
     pic = np.float32(pic)
-    mean, std = cv2.meanStdDev(pic)
-    pic_channel = 1 if len(pic.shape) == 2 else 3
-    for channel in range(0, pic_channel):
-        if std[channel][0] < 1e-6:
-            std[channel][0] = 1
+    if mean is None:
+        mean = pic.mean()
+    if std is None:
+        std = pic.std()
+    std = np.where(std < 1e-6, 1, std)
     pic = (pic - mean) / std
     return np.float32(pic)
+
+
+def pic_normalize_gray(pic, mean=None, std=None):
+    # if len(pic.shape) == 4:
+    #     return np.apply_along_axis(pic_normalize_gray_single, 0)
+    # else:
+    return pic_normalize_gray_single(pic, mean, std)
+
+
+def pic_normalize_color_single(pic, mean=None, std=None):
+    pic = np.float32(pic)
+    if mean is None:
+        mean = pic.mean(axis=(0, 1, 2), keepdims=True)
+    if std is None:
+        std = pic.std(axis=(0, 1, 2), keepdims=True)
+    std = np.where(std < 1e-6, 1, std)
+    pic = (pic - mean) / std
+    return np.float32(pic)
+
+
+def pic_normalize_color(pic, mean=None, std=None):
+    # if len(pic.shape) == 4:
+    #     np.apply_along_axis(pic_normalize_color_single, 0)
+    # else:
+    return pic_normalize_color_single(pic, mean, std)
 
 
 def get_cropped_coords(dataset, crop_matrix, coord_x, coord_y, crop_size, flip=0):
@@ -187,15 +216,34 @@ def get_gt_heatmap(dataset, gt_coords, crop_size, sigma):
     return np.array(gt_heatmap)
 
 
-def get_item_from(ds_route, dataset, split, annotation, crop_size, RGB, sigma, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical):
-    pic = cv2.imread(dataset_route(ds_route, dataset)+annotation[-1])
-    pic = convert_img_to_gray(pic) if not RGB else pic
+def get_mean_std_color(dataset, split):
+    mean = None
+    std = None
+    if dataset in means_color and split in means_color[dataset]:
+        mean = means_color[dataset][split]
+    if dataset in stds_color and split in stds_color[dataset]:
+        std = stds_color[dataset][split]
+    return np.array(mean), np.array(std)
+
+
+def get_mean_std_gray(dataset, split):
+    mean = None
+    std = None
+    if dataset in means_gray and split in means_gray[dataset]:
+        mean = means_gray[dataset][split]
+    if dataset in stds_gray and split in stds_gray[dataset]:
+        std = stds_gray[dataset][split]
+    return  np.array(mean),  np.array(std)
+
+
+def get_item_from(dataset_route, dataset, split, type, annotation, crop_size, RGB, sigma, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical):
+    pic_orig = cv2.imread(dataset_route[dataset] + annotation[-1])
     coord_x = list(map(float, annotation[:2*kp_num[dataset]:2]))
     coord_y = list(map(float, annotation[1:2*kp_num[dataset]:2]))
     coord_xy = np.array(np.float32(list(map(float, annotation[:2*kp_num[dataset]]))))
     bbox = np.array(list(map(int, annotation[-7:-3])))
 
-    translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(split, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical)
+    translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical)
 
     horizontal_add = (bbox[3] - bbox[1]) * scaling_horizontal
     vertical_add = (bbox[2] - bbox[0]) * scaling_vertical
@@ -211,11 +259,22 @@ def get_item_from(ds_route, dataset, split, annotation, crop_size, RGB, sigma, t
                                  [0, crop_size - 1],
                                  [crop_size - 1, crop_size - 1]])
     crop_matrix = cv2.getAffineTransform(position_before, position_after)
-    pic_crop = cv2.warpAffine(pic, crop_matrix, (crop_size, crop_size))
-    pic_crop = further_transform(pic_crop, bbox, flip, gaussian_blur) if split in ['train'] else pic_crop
+    pic_crop_orig = cv2.warpAffine(pic_orig, crop_matrix, (crop_size, crop_size))
+    pic_crop_orig = further_transform(pic_crop_orig, bbox, flip, gaussian_blur) if type in ['train'] else pic_crop_orig
     affine_matrix = get_affine_matrix(crop_size, rotation, scaling)
-    pic_affine = cv2.warpAffine(pic_crop, affine_matrix, (crop_size, crop_size))
-    pic_affine = pic_normalize(pic_affine) if not RGB else pic_affine
+    pic_affine_orig = cv2.warpAffine(pic_crop_orig, affine_matrix, (crop_size, crop_size))
+    pic_affine_orig = np.float32(cv2.cvtColor(pic_affine_orig, cv2.COLOR_BGR2RGB))
+
+    mean_color, std_color = get_mean_std_color(dataset, split)
+    mean_gray, std_gray = get_mean_std_gray(dataset, split)
+
+    pic_affine_orig_norm = pic_normalize_color(pic_affine_orig, mean_color, std_color)
+    pic_affine_orig_norm = np.moveaxis(pic_affine_orig_norm, -1, 0)
+    if not RGB:
+        pic_affine = convert_img_to_gray(pic_affine_orig)
+        pic_affine = pic_normalize_gray(pic_affine, mean_gray, std_gray)[np.newaxis, ...]
+    else:
+        pic_affine = pic_affine_orig_norm
 
     coord_x_cropped, coord_y_cropped = get_cropped_coords(dataset, crop_matrix, coord_x, coord_y, crop_size, flip=flip)
     gt_coords_xy = get_gt_coords(dataset, affine_matrix, coord_x_cropped, coord_y_cropped)
@@ -226,4 +285,5 @@ def get_item_from(ds_route, dataset, split, annotation, crop_size, RGB, sigma, t
     # show_img(pic_affine)
     # watch_gray_heatmap(gt_heatmap)
 
-    return pic_affine, gt_coords_xy, gt_heatmap, coord_xy, bbox, annotation[-1]
+    pic_affine_orig = np.moveaxis(pic_affine_orig, -1, 0)
+    return pic_affine_orig, pic_affine, pic_affine_orig_norm, gt_coords_xy, gt_heatmap, coord_xy, bbox, annotation[-1]

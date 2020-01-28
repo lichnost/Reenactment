@@ -2,4 +2,6 @@
 /*.iml
 imgs/**
 pics/**
+tmp/**
 weights/**
+/.idea/**

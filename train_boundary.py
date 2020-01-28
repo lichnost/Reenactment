@@ -1,8 +1,8 @@
 import os
 import torch
 import torch.nn as nn
-from models import WingLoss, Estimator, Regressor, Discrim
-from dataset import GeneralDataset
+from models import WingLoss, Estimator, Regressor, Discrim, AdaptiveWingLoss
+from utils.dataset import GeneralDataset
 from utils import *
 from utils.args import parse_args
 import tqdm
@@ -32,17 +32,24 @@ def train(arg):
           '# Start lr:           ' + str(arg.lr) + '\n' +
           '# Max epoch:          ' + str(arg.max_epoch) + '\n' +
           '# Loss type:          ' + arg.loss_type + '\n' +
-          '# Heatmap loss type:  ' + arg.gp_loss_type + '\n' +
+          '# GP loss lampda:     ' + str(arg.gp_loss_lambda) + '\n' +
           '# Resumed model:      ' + str(arg.resume_epoch > 0))
     if arg.resume_epoch > 0:
         print('# Resumed epoch:      ' + str(arg.resume_epoch))
 
     print('Creating networks ...')
-    estimator, regressor, discrim = create_model(arg, devices)
+    estimator = create_model_estimator(arg, devices)
     estimator.train()
+
+    regressor = create_model_regressor(arg, devices)
     regressor.train()
-    if discrim is not None:
+
+    if arg.GAN:
+        discrim = create_model_discriminator(arg, devices)
         discrim.train()
+    else:
+        discrim = None
+
     print('Creating networks done!')
 
     optimizer_estimator = torch.optim.SGD(estimator.parameters(), lr=arg.lr, momentum=arg.momentum,
@@ -58,11 +65,15 @@ def train(arg):
         criterion = nn.L1Loss()
     elif arg.loss_type == 'smoothL1':
         criterion = nn.SmoothL1Loss()
+    elif arg.loss_type == 'wingloss':
+        criterion = WingLoss(omega=arg.wingloss_omega, epsilon=arg.wingloss_epsilon)
     else:
-        criterion = WingLoss(w=arg.wingloss_w, epsilon=arg.wingloss_e)
+        criterion = AdaptiveWingLoss(arg.wingloss_omega, theta=arg.wingloss_theta, epsilon=arg.wingloss_epsilon, alpha=arg.wingloss_alpha)
 
     print('Loading dataset ...')
-    trainset = GeneralDataset(arg, dataset=arg.dataset)
+    trainset = GeneralDataset(arg, dataset=arg.dataset, split=arg.split)
+    dataloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=arg.shuffle,
+                                             num_workers=arg.workers, pin_memory=True)
     print('Loading dataset done!')
 
     d_fake = (torch.zeros(arg.batch_size, 13)).cuda(device=devices[0]) if arg.GAN \
@@ -72,8 +83,6 @@ def train(arg):
     print('Start training ...')
     for epoch in range(arg.resume_epoch, arg.max_epoch):
         forward_times_per_epoch, sum_loss_estimator, sum_loss_regressor = 0, 0., 0.
-        dataloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=arg.shuffle,
-                                                 num_workers=arg.workers, pin_memory=True)
 
         if epoch in arg.step_values:
             optimizer_estimator.param_groups[0]['lr'] *= arg.gamma
@@ -82,9 +91,8 @@ def train(arg):
 
         for data in tqdm.tqdm(dataloader):
             forward_times_per_epoch += 1
-            input_images, gt_coords_xy, gt_heatmap, _, _, _ = data
+            _, input_images, _, gt_coords_xy, gt_heatmap, _, _, _ = data
             true_batchsize = input_images.size()[0]
-            input_images = input_images.unsqueeze(1)
             input_images = input_images.cuda(device=devices[0])
             gt_coords_xy = gt_coords_xy.cuda(device=devices[0])
             gt_heatmap = gt_heatmap.cuda(device=devices[0])
@@ -97,7 +105,7 @@ def train(arg):
             loss_estimator.backward()
             optimizer_estimator.step()
 
-            sum_loss_estimator += loss_estimator
+            sum_loss_estimator += loss_estimator.item()
 
             optimizer_discrim.zero_grad()
             loss_D_real = -torch.mean(torch.log2(discrim(gt_heatmap)))
@@ -116,7 +124,7 @@ def train(arg):
             d_fake = (calc_d_fake(arg.dataset, out.detach(), gt_coords_xy, true_batchsize,
                                   arg.batch_size, arg.delta, arg.theta)).cuda(device=devices[0])
 
-            sum_loss_regressor += loss_regressor
+            sum_loss_regressor += loss_regressor.item()
 
         if (epoch+1) % arg.save_interval == 0:
             torch.save(estimator.state_dict(), arg.save_folder + 'estimator_'+str(epoch+1)+'.pth')
@@ -128,8 +136,8 @@ def train(arg):
 
         print('\nepoch: {:0>4d} | loss_estimator: {:.2f} | loss_regressor: {:.2f}'.format(
             epoch,
-            sum_loss_estimator.item()/forward_times_per_epoch,
-            sum_loss_regressor.item()/forward_times_per_epoch
+            sum_loss_estimator/forward_times_per_epoch,
+            sum_loss_regressor/forward_times_per_epoch
         ))
 
     torch.save(estimator.state_dict(), arg.save_folder + 'estimator_'+str(epoch+1)+'.pth')
@@ -155,15 +163,13 @@ def train_with_gt_heatmap(arg):
           '# Lr step gamma:      ' + str(arg.gamma) + '\n' +
           '# Max epoch:          ' + str(arg.max_epoch) + '\n' +
           '# Loss type:          ' + arg.loss_type + '\n' +
+          '# GP loss lampda:     ' + arg.gp_loss_lambda + '\n' +
           '# Resumed model:      ' + str(arg.resume_epoch > 0))
     if arg.resume_epoch > 0:
         print('# Resumed epoch:      ' + str(arg.resume_epoch))
 
     print('Creating networks ...')
-    regressor = Regressor(fuse_stages=arg.fuse_stage, output=2 * kp_num[arg.dataset])
-    regressor = load_weights(regressor, arg.resume_folder + arg.dataset + '_regressor_' +
-                             str(arg.resume_epoch) + '.pth', devices[0]) if arg.resume_epoch > 0 else regressor
-    regressor = regressor.cuda(device=devices[0])
+    regressor = create_model_regressor(arg, devices)
     regressor.train()
     print('Creating networks done!')
 
@@ -177,25 +183,24 @@ def train_with_gt_heatmap(arg):
     elif arg.loss_type == 'smoothL1':
         criterion = nn.SmoothL1Loss()
     else:
-        criterion = WingLoss(w=arg.wingloss_w, epsilon=arg.wingloss_e)
+        criterion = WingLoss(omega=arg.wingloss_w, epsilon=arg.wingloss_e)
 
     print('Loading dataset ...')
     trainset = GeneralDataset(arg, dataset=arg.dataset)
+    dataloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=arg.shuffle,
+                                             num_workers=arg.workers, pin_memory=True)
     print('Loading dataset done!')
 
     print('Start training ...')
     for epoch in range(arg.resume_epoch, arg.max_epoch):
         forward_times_per_epoch, sum_loss_regressor = 0, 0.
-        dataloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=arg.shuffle,
-                                                 num_workers=arg.workers, pin_memory=True)
 
         if epoch in arg.step_values:
             optimizer_regressor.param_groups[0]['lr'] *= arg.gamma
 
         for data in tqdm.tqdm(dataloader):
             forward_times_per_epoch += 1
-            input_images, gt_coords_xy, gt_heatmap, _, _, _ = data
-            input_images = input_images.unsqueeze(1)
+            _, input_images, _, gt_coords_xy, gt_heatmap, _, _, _ = data
             input_images = input_images.cuda(device=devices[0])
             gt_coords_xy = gt_coords_xy.cuda(device=devices[0])
             gt_heatmap = gt_heatmap.cuda(device=devices[0])
@@ -237,20 +242,16 @@ def train_with_gt_heatmap_new(arg):
           '# Lr step gamma:      ' + str(arg.gamma) + '\n' +
           '# Max epoch:          ' + str(arg.max_epoch) + '\n' +
           '# Loss type:          ' + arg.loss_type + '\n' +
+          '# GP loss lampda:     ' + arg.gp_loss_lambda + '\n' +
           '# Resumed model:      ' + str(arg.resume_epoch > 0))
     if arg.resume_epoch > 0:
         print('# Resumed epoch:      ' + str(arg.resume_epoch))
 
     print('Creating networks ...')
-    estimator = Estimator(loss_type=arg.hm_loss_type, stacks=arg.hour_stack, msg_pass=arg.msg_pass)
-    estimator = load_weights(estimator, arg.resume_folder + 'estimator_' + str(arg.resume_epoch) + '.pth',
-                             devices[0])  if arg.resume_epoch > 0 else estimator
-    estimator = estimator.cuda(device=devices[0])
+    estimator = create_model_estimator(arg, devices)
+    estimator.train()
 
-    regressor = Regressor(fuse_stages=arg.fuse_stage, output=2 * kp_num[arg.dataset])
-    regressor = load_weights(regressor, arg.resume_folder + arg.dataset + '_regressor_' +
-                             str(arg.resume_epoch) + '.pth', devices[0]) if arg.resume_epoch > 0 else regressor
-    regressor = regressor.cuda(device=devices[0])
+    regressor = create_model_regressor(arg, devices)
     regressor.train()
     print('Creating networks done!')
 
@@ -266,7 +267,7 @@ def train_with_gt_heatmap_new(arg):
     elif arg.loss_type == 'smoothL1':
         criterion = nn.SmoothL1Loss()
     else:
-        criterion = WingLoss(w=arg.wingloss_w, epsilon=arg.wingloss_e)
+        criterion = WingLoss(omega=arg.wingloss_w, epsilon=arg.wingloss_e)
 
     print('Loading dataset ...')
     trainset = GeneralDataset(arg, dataset=arg.dataset)
@@ -283,8 +284,7 @@ def train_with_gt_heatmap_new(arg):
 
         for data in tqdm.tqdm(dataloader):
             forward_times_per_epoch += 1
-            input_images, gt_coords_xy, gt_heatmap, _, _, _ = data
-            input_images = input_images.unsqueeze(1)
+            _, input_images, _, gt_coords_xy, gt_heatmap, _, _, _ = data
             input_images = input_images.cuda(device=devices[0])
             gt_coords_xy = gt_coords_xy.cuda(device=devices[0])
             gt_heatmap = gt_heatmap.cuda(device=devices[0])
