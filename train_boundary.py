@@ -1,15 +1,15 @@
 import os
-import torch
-import torch.nn as nn
-from models import WingLoss, Estimator, Regressor, Discrim, AdaptiveWingLoss
-from utils.dataset import GeneralDataset
-from utils import *
-from utils.args import parse_args
-import tqdm
 
+import torch.nn as nn
+import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
-torch.autograd.set_detect_anomaly(True)
+from models import WingLoss, AdaptiveWingLoss
+from utils import *
+from utils.args import parse_args
+from utils.dataset import GeneralDataset
+
+torch.cuda.synchronize()
 
 def train(arg):
     log_writer = None
@@ -45,19 +45,16 @@ def train(arg):
     regressor.train()
 
     if arg.GAN:
-        discrim = create_model_discriminator(arg, devices)
+        discrim = create_model_heatmap_discrim(arg, devices)
         discrim.train()
     else:
         discrim = None
 
     print('Creating networks done!')
 
-    optimizer_estimator = torch.optim.SGD(estimator.parameters(), lr=arg.lr, momentum=arg.momentum,
-                                          weight_decay=arg.weight_decay)
-    optimizer_regressor = torch.optim.SGD(regressor.parameters(), lr=arg.lr, momentum=arg.momentum,
-                                          weight_decay=arg.weight_decay)
-    optimizer_discrim = torch.optim.SGD(discrim.parameters(), lr=arg.lr, momentum=arg.momentum,
-                                        weight_decay=arg.weight_decay) if discrim is not None else None
+    optimizer_estimator = create_optimizer(arg, estimator.parameters())
+    optimizer_regressor = create_optimizer(arg, estimator.parameters())
+    optimizer_discrim = create_optimizer(arg, estimator.parameters()) if discrim is not None else None
 
     if arg.loss_type == 'L2':
         criterion = nn.MSELoss()
@@ -308,7 +305,7 @@ def train_with_gt_heatmap_new(arg):
         if (epoch + 1) % arg.save_interval == 0:
             torch.save(regressor.state_dict(), arg.save_folder + arg.dataset + '_regressor_' + str(epoch + 1) + '.pth')
 
-        print('\nepoch: {:0>4d} | loss_regressor: {:.2f}'.format(
+        print('\nepoch: {:0>4d} | loss_regressor: {:.10f}'.format(
             epoch,
             sum_loss_regressor.item() / forward_times_per_epoch
         ))

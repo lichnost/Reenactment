@@ -3,7 +3,7 @@ import tqdm
 import torch
 from torch.utils.data import DataLoader
 from utils.args import parse_args
-from utils.dataset import SimpleDataset
+from utils.dataset import OriginalImageDataset
 from kornia import rgb_to_grayscale
 
 
@@ -12,7 +12,7 @@ def main(arg):
     print('Evaluating parameters:\n' +
           '# Dataset:            ' + arg.dataset + '\n' +
           '# Dataset split:      ' + arg.split + '\n')
-    dataset = SimpleDataset(arg, arg.dataset, arg.split)
+    dataset = OriginalImageDataset(arg, arg.dataset, arg.split)
 
     cnt = 0
     mean_color = torch.zeros(3)

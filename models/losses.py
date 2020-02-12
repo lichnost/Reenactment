@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import numpy as np
 from utils.dataset_info import boundary_num
 from utils.visual import show_img
+from torchvision import models
+from collections import namedtuple
 
 
 class GPLoss(nn.Module):
@@ -171,3 +173,69 @@ class AdaptiveWingLoss(nn.Module):
         C = self.theta * A - self.omega * torch.log(1 + torch.pow(self.theta / self.epsilon, self.alpha - y2))
         loss2 = A * delta_y2 - C
         return (loss1.sum() + loss2.sum()) / (len(loss1) + len(loss2))
+
+
+# feature loss network
+class FeatureLoss(torch.nn.Module):
+    def __init__(self, requires_grad=False, loss_type='relu2_2_and_relu3_3'):
+        super(FeatureLoss, self).__init__()
+        self.loss_type = loss_type
+        vgg_pretrained_features = models.vgg16(pretrained=True).features
+        self.slice1 = torch.nn.Sequential()
+        self.slice2 = torch.nn.Sequential()
+        self.slice3 = torch.nn.Sequential()
+        self.slice4 = torch.nn.Sequential()
+        for x in range(4):
+            self.slice1.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(4, 9):
+            self.slice2.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(9, 16):
+            self.slice3.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(16, 23):
+            self.slice4.add_module(str(x), vgg_pretrained_features[x])
+        if not requires_grad:
+            for param in self.parameters():
+                param.requires_grad = False
+
+        self.criterionL2 = torch.nn.MSELoss()
+
+    def get_vgg_output(self, X):
+        h = self.slice1(X)
+        h_relu1_2 = h
+        h = self.slice2(h)
+        h_relu2_2 = h
+        h = self.slice3(h)
+        h_relu3_3 = h
+        h = self.slice4(h)
+        h_relu4_3 = h
+        vgg_outputs = namedtuple("VggOutputs", ['relu1_2', 'relu2_2', 'relu3_3', 'relu4_3'])
+        out = vgg_outputs(h_relu1_2, h_relu2_2, h_relu3_3, h_relu4_3)
+        return out
+
+    def forward(self, pred, target):
+        features_pred = self.get_vgg_output(pred)
+        features_target = self.get_vgg_output(target)
+        if self.loss_type == 'relu1_2':
+            return self.criterionL2(features_pred.relu1_2,
+                                                   features_target.relu1_2)
+        elif self.loss_type == 'relu2_2':
+            return self.criterionL2(features_pred.relu2_2,
+                                                   features_target.relu2_2)
+        elif self.loss_type == 'relu3_3':
+            return self.criterionL2(features_pred.relu3_3,
+                                                   features_target.relu3_3)
+        elif self.loss_type == 'relu4_3':
+            return self.criterionL2(features_pred.relu4_3,
+                                                   features_target.relu4_3)
+        elif self.loss_type == 'relu1_2_and_relu2_2':
+            return (self.criterionL2(features_pred.relu1_2, features_target.relu1_2) +
+                                   self.criterionL2(features_pred.relu2_2,
+                                                    features_target.relu2_2))
+        elif self.loss_type == 'relu2_2_and_relu3_3':
+            return (self.criterionL2(features_pred.relu2_2, features_target.relu2_2) +
+                                   self.criterionL2(features_pred.relu3_3,
+                                                    features_target.relu3_3))
+        elif self.loss_type == 'relu3_3_and_relu4_3':
+            return (self.criterionL2(features_pred.relu3_3, features_target.relu3_3) +
+                                   self.criterionL2(features_pred.relu4_3,
+                                                    features_target.relu4_3))

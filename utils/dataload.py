@@ -240,7 +240,7 @@ def get_item_from(dataset_route, dataset, split, type, annotation, crop_size, RG
     pic_orig = cv2.imread(dataset_route[dataset] + annotation[-1])
     coord_x = list(map(float, annotation[:2*kp_num[dataset]:2]))
     coord_y = list(map(float, annotation[1:2*kp_num[dataset]:2]))
-    coord_xy = np.array(np.float32(list(map(float, annotation[:2*kp_num[dataset]]))))
+    coord_xy = np.array(np.float32(annotation[:2*kp_num[dataset]]))
     bbox = np.array(list(map(int, annotation[-7:-3])))
 
     translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical)

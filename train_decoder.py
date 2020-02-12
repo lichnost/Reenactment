@@ -1,16 +1,15 @@
 import os
-import torch
+
 import torch.nn as nn
-from models import GPLoss, CPLoss, WingLoss, Estimator, Regressor, Discrim
-from utils.dataset import GeneralDataset
-from utils import *
-from utils.args import parse_args
 import tqdm
 from kornia.color import denormalize, normalize, rgb_to_grayscale
-
 from torch.utils.tensorboard import SummaryWriter
 
-torch.autograd.set_detect_anomaly(True)
+from models import GPLoss, CPLoss, WingLoss, AdaptiveWingLoss, FeatureLoss
+from utils import *
+from utils.args import parse_args
+from utils.dataset import DecoderDataset
+
 
 def train(arg):
     log_writer = None
@@ -22,7 +21,7 @@ def train(arg):
     epoch = None
     devices = get_devices_list(arg)
 
-    print('*****  Normal Training  *****')
+    print('*****  Training decoder  *****')
     print('Training parameters:\n' +
           '# Dataset:            ' + arg.dataset + '\n' +
           '# Dataset split:      ' + arg.split + '\n' +
@@ -52,11 +51,13 @@ def train(arg):
 
     print('Creating networks done!')
 
-    optimizer_decoder = torch.optim.SGD(decoder.parameters(), lr=arg.lr, momentum=arg.momentum,
-                                          weight_decay=arg.weight_decay)
+    optimizer_decoder = create_optimizer(arg, decoder.parameters())
 
     criterion_gp = GPLoss()
     criterion_cp = CPLoss()
+    if arg.cuda:
+        criterion_gp = criterion_gp.cuda(device=devices[0])
+        criterion_cp = criterion_cp.cuda(device=devices[0])
 
     mean = None
     std = None
@@ -67,6 +68,16 @@ def train(arg):
         if arg.cuda:
             mean = mean.cuda(device=devices[0])
             std = std.cuda(device=devices[0])
+
+    criterion_simple = nn.L1Loss()
+    if arg.cuda:
+        criterion_simple = criterion_simple.cuda(device=devices[0])
+
+    criterion_feature = None
+    if arg.feature_loss:
+        criterion_feature = FeatureLoss(False, arg.feature_loss_type)
+        if arg.cuda:
+            criterion_feature = criterion_feature.cuda(device=devices[0])
 
     criterion_regressor = None
     if regressor is not None:
@@ -81,9 +92,12 @@ def train(arg):
         else:
             criterion_regressor = AdaptiveWingLoss(arg.wingloss_omega, theta=arg.wingloss_theta, epsilon=arg.wingloss_epsilon,
                                          alpha=arg.wingloss_alpha)
+        if arg.cuda:
+            criterion_regressor = criterion_regressor.cuda(device=devices[0])
+
 
     print('Loading dataset ...')
-    trainset = GeneralDataset(arg, dataset=arg.dataset, split=arg.split)
+    trainset = DecoderDataset(arg, dataset=arg.dataset, split=arg.split)
     print('Loading dataset done!')
 
     dataloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=arg.shuffle,
@@ -99,7 +113,7 @@ def train(arg):
 
         for data in tqdm.tqdm(dataloader):
             forward_times_per_epoch += 1
-            _, input_images, input_images_norm, gt_coords_xy, _, _, _, _ = data
+            input_images, input_images_norm, gt_coords_xy = data
 
             if arg.cuda:
                 input_images = input_images.cuda(device=devices[0])
@@ -109,10 +123,16 @@ def train(arg):
             optimizer_decoder.zero_grad()
             heatmaps_orig = estimator(input_images)[-1]
             heatmaps = F.interpolate(heatmaps_orig, 256, mode='bicubic')
+            heatmaps[heatmaps < arg.boundary_cutoff_lambda * heatmaps.max()] = 0
+
             fake_images_norm = decoder(heatmaps)
             loss_gp = criterion_gp(fake_images_norm, input_images_norm)
             loss_cp = criterion_cp(fake_images_norm, input_images_norm)
-            loss_decoder = arg.gp_loss_lambda * loss_gp + arg.cp_loss_lambda * loss_cp
+            loss_simple = criterion_simple(fake_images_norm, input_images_norm)
+            loss_decoder = arg.gp_loss_lambda * loss_gp + arg.cp_loss_lambda * loss_cp + loss_simple
+
+            if criterion_feature is not None:
+                loss_decoder = loss_decoder + arg.feature_loss_lambda * criterion_feature(fake_images_norm, input_images_norm)
 
             if regressor is not None:
                 fake_images = denormalize(fake_images_norm, mean, std)
@@ -133,7 +153,7 @@ def train(arg):
         # if log_writer is not None:
         #     log_writer.add_scalar()
 
-        print('\nepoch: {:0>4d} | loss_decoder: {:.2f}'.format(
+        print('\nepoch: {:0>4d} | loss_decoder: {:.10f}'.format(
             epoch,
             sum_loss_decoder/forward_times_per_epoch,
         ))

@@ -559,29 +559,29 @@ class Regressor(nn.Module):
         return out
 
 
-class Discrim(nn.Module):
+class HeatmapDiscrim(nn.Module):
     channels, linear_n = [13, 64, 192, 384, 256, 256], [4096, 1024, 256, 13]
     ker_size, strd, pad = [2, 5, 3, 3, 3], [2, 1, 1, 1, 1], [0, 2, 1, 1, 1]
     maxpool_mask = [1, 1, 0, 0, 1]
 
     def __init__(self, conv_layers=5, linear_layers=3):
-        super(Discrim, self).__init__()
+        super(HeatmapDiscrim, self).__init__()
         conv_features = []
         linear_classify = []
         for index in range(conv_layers):
-            conv_features.append(nn.Conv2d(Discrim.channels[index], Discrim.channels[index + 1],
-                                           kernel_size=Discrim.ker_size[index],
-                                           stride=Discrim.strd[index],
-                                           padding=Discrim.pad[index],
+            conv_features.append(nn.Conv2d(HeatmapDiscrim.channels[index], HeatmapDiscrim.channels[index + 1],
+                                           kernel_size=HeatmapDiscrim.ker_size[index],
+                                           stride=HeatmapDiscrim.strd[index],
+                                           padding=HeatmapDiscrim.pad[index],
                                            bias=False))
-            conv_features.append(nn.BatchNorm2d(Discrim.channels[index + 1]))
+            conv_features.append(nn.BatchNorm2d(HeatmapDiscrim.channels[index + 1]))
             conv_features.append(nn.ReLU(inplace=False))
-            if Discrim.maxpool_mask[index] == 1:
+            if HeatmapDiscrim.maxpool_mask[index] == 1:
                 conv_features.append(nn.MaxPool2d(3, stride=2, padding=1))
             else:
                 conv_features.append(nn.ReLU(inplace=False))
         for index in range(linear_layers):
-            linear_classify.append(nn.Linear(Discrim.linear_n[index], Discrim.linear_n[index+1]))
+            linear_classify.append(nn.Linear(HeatmapDiscrim.linear_n[index], HeatmapDiscrim.linear_n[index + 1]))
             if index != linear_layers - 1:
                 linear_classify.append(nn.ReLU(inplace=False))
             else:
@@ -737,3 +737,16 @@ class Decoder(nn.Module):
     def forward(self, x):
         out = self.unet(x)
         return out
+
+
+class PCA(nn.Module):
+    def __init__(self, in_size, pca_size, gpu_ids=[]):
+        super(PCA, self).__init__()
+        layers = []
+        layers.append(nn.Linear(in_size, pca_size))
+        self.pca = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.pca(x)
+
+

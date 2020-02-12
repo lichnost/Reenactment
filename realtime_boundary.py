@@ -26,10 +26,14 @@ def main(arg):
     regressor.eval()
     print('Loading network done!\nStart testing ...')
 
-    # detect face and facial landmark
-    cap = cv2.VideoCapture(0)
-    face_keypoint_coords = []
 
+    if arg.eval_video_path is not None:
+        cap = cv2.VideoCapture(arg.eval_video_path)
+    else:
+        cap = cv2.VideoCapture(0)
+
+    # detect face and facial landmark
+    face_keypoint_coords = []
     while cap.isOpened():      # isOpened()  Detect if the camera is on
         ret, img = cap.read()  # Save the image information obtained by the camera to the img variable
         if ret is True:        # If the camera reads the image successfully
@@ -125,13 +129,7 @@ def main(arg):
                 if len(face_keypoint_coords) != 0:
                     for face_id, coords in enumerate(face_keypoint_coords):
                         for kp_index in range(kp_num[arg.dataset]):
-                            cv2.circle(
-                                img,
-                                (int(coords[2 * kp_index]), int(coords[2 * kp_index + 1])),
-                                2,
-                                (0, 0, 255),
-                                -1
-                            )
+                            img = draw_circle(img, (int(coords[2 * kp_index]), int(coords[2 * kp_index + 1])))
                     show_img(img, 'face_whole', wait=1, keep=True)
                     face_keypoint_coords = []
 
@@ -146,7 +144,6 @@ def main(arg):
 if __name__ == '__main__':
     arg = parse_args()
 
-    arg.realtime = True
     arg.scale_ratio = 0.5
 
     main(arg)

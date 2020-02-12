@@ -4,7 +4,7 @@ from collections import OrderedDict
 import numpy as np
 from sklearn.metrics import auc
 from utils import *
-
+import torch_optimizer as optim
 
 def get_devices_list(arg):
     devices_list = [torch.device('cpu')]
@@ -68,11 +68,11 @@ def create_model_regressor(arg, devices_list, eval=False):
     return regressor
 
 
-def create_model_discriminator(arg, devices_list, eval=False):
-    from models import Discrim
+def create_model_heatmap_discrim(arg, devices_list, eval=False):
+    from models import HeatmapDiscrim
     resume_epoch = arg.eval_epoch_discriminator if eval else arg.resume_epoch
 
-    discrim = Discrim()
+    discrim = HeatmapDiscrim()
 
     if resume_epoch > 0:
         load_path = arg.resume_folder + 'discrim_' + str(resume_epoch) + '.pth'
@@ -102,6 +102,24 @@ def create_model_decoder(arg, devices_list, eval=False):
         decoder = decoder.cuda(device=devices_list[0])
 
     return decoder
+
+
+def create_model_pca(arg, devices_list, eval=False):
+    from models import PCA
+    resume_dataset = arg.eval_dataset_pca if eval else arg.dataset
+    resume_epoch = arg.eval_epoch_pca if eval else arg.resume_epoch
+
+    pca = PCA(in_size=2*kp_num[arg.dataset], pca_size=arg.pca_components)
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + resume_dataset+'_pca_' + str(resume_epoch) + '.pth'
+        print('Loading PCA from ' + load_path)
+        pca = load_weights(pca, load_path, devices_list[0])
+
+    if arg.cuda:
+        pca = pca.cuda(device=devices_list[0])
+
+    return pca
 
 
 def calc_d_fake(dataset, pred_coords, gt_coords, bcsize, bcsize_set, delta, theta):
@@ -210,3 +228,21 @@ def get_heatmap_gray(heatmaps):
 def coord_transform(xy, crop_matrix):
     return (crop_matrix[0][0] * xy[0] + crop_matrix[0][1] * xy[1] + crop_matrix[0][2],
             crop_matrix[1][0] * xy[0] + crop_matrix[1][1] * xy[1] + crop_matrix[1][2])
+
+
+def create_optimizer(arg, parameters):
+    if arg.optimizer == 'Lamb':
+        optimizer = optim.Lamb(
+            parameters,
+            lr=arg.lr,
+            weight_decay=arg.weight_decay
+        )
+    else:
+        optimizer = torch.optim.SGD(
+            decoder.parameters(),
+            lr=arg.lr,
+            momentum=arg.momentum,
+            weight_decay=arg.weight_decay
+        )
+
+    return optimizer

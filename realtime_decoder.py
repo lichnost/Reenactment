@@ -8,6 +8,8 @@ from kornia.color import denormalize
 from utils import *
 from utils.args import parse_args
 
+import matplotlib.pyplot as plt
+
 
 def main(arg):
     devices = get_devices_list(arg)
@@ -30,9 +32,12 @@ def main(arg):
         mean = mean.cuda(device=devices[0])
         std = std.cuda(device=devices[0])
 
-    # detect face and facial landmark
-    cap = cv2.VideoCapture(0)
+    if arg.eval_video_path is not None:
+        cap = cv2.VideoCapture(arg.eval_video_path)
+    else:
+        cap = cv2.VideoCapture(0)
 
+    # detect face and facial landmark
     while cap.isOpened():      # isOpened()  Detect if the camera is on
         ret, img = cap.read()  # Save the image information obtained by the camera to the img variable
         if ret is True:        # If the camera reads the image successfully
@@ -75,14 +80,25 @@ def main(arg):
                         if arg.cuda:
                             input_face = input_face.cuda(device=devices[0])
 
-                        heatmaps_orig = estimator(input_face)[-1]
-                        heatmaps = F.interpolate(heatmaps_orig, 256, mode='bicubic')
+                        heatmaps_orig = estimator(input_face)
+                        heatmaps = heatmaps_orig[-1]
+                        heatmaps = F.interpolate(heatmaps, 256, mode='bicubic')
+                        heatmaps[heatmaps < arg.boundary_cutoff_lambda * heatmaps.max()] = 0
+
                         fake_image_norm = decoder(heatmaps).detach()
                         fake_image = denormalize(fake_image_norm, mean, std).cpu().squeeze().numpy()
                         fake_image = np.uint8(np.moveaxis(fake_image, 0, -1))
                         fake_image = cv2.cvtColor(fake_image, cv2.COLOR_RGB2BGR)
+
                         show_img(img, 'source', wait=1, keep=True)
                         show_img(fake_image, 'target', wait=1, keep=True)
+
+                        heatmap_show = get_heatmap_gray(heatmaps).detach().cpu().numpy()
+                        heatmap_show = (
+                                    255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
+                        heatmap_show = np.moveaxis(heatmap_show, 0, -1)
+                        show_img(heatmap_show, 'heatmap', wait=1, keep=True)
+
 
             if k == ord('q') or k == ord('Q'):
                 break

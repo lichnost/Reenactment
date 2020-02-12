@@ -182,3 +182,7 @@ def eval_CED(auc_record):
     plt.plot(error, TCDCN_auc_value, 'mx')
     plt.axis([0., 0.1, 0., 1.])
     plt.show()
+
+
+def draw_circle(img, xy):
+    return cv2.circle(img, xy, 2, (0, 0, 255), -1)

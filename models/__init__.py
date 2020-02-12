@@ -1,2 +1,2 @@
-from .losses import WingLoss, GPLoss, CPLoss, AdaptiveWingLoss
-from .models import Estimator, Regressor, Discrim, Decoder
+from .losses import WingLoss, GPLoss, CPLoss, AdaptiveWingLoss, FeatureLoss
+from .models import Estimator, Regressor, HeatmapDiscrim, Decoder, PCA
