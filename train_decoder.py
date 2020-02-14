@@ -14,9 +14,15 @@ from utils.dataset import DecoderDataset
 def train(arg):
     log_writer = None
     if arg.save_logs:
-        if not os.path.exists('./logs'):
-            os.mkdir('./logs')
-        log_writer = SummaryWriter()
+        log_path = './logs/decoder_' + arg.dataset + '_' + arg.split
+        if not os.path.exists(log_path):
+            os.makedirs(log_path)
+        log_writer = SummaryWriter(log_dir=log_path)
+        def log(tag, scalar, step):
+            log_writer.add_scalar(tag, scalar, step)
+    else:
+        def log(tag, scalar, step):
+            pass
 
     epoch = None
     devices = get_devices_list(arg)
@@ -69,7 +75,7 @@ def train(arg):
             mean = mean.cuda(device=devices[0])
             std = std.cuda(device=devices[0])
 
-    criterion_simple = nn.L1Loss()
+    criterion_simple = nn.MSELoss()
     if arg.cuda:
         criterion_simple = criterion_simple.cuda(device=devices[0])
 
@@ -98,14 +104,17 @@ def train(arg):
 
     print('Loading dataset ...')
     trainset = DecoderDataset(arg, dataset=arg.dataset, split=arg.split)
-    print('Loading dataset done!')
-
     dataloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=arg.shuffle,
                                              num_workers=arg.workers, pin_memory=True)
+    steps_per_epoch = len(dataloader)
+    print('Loading dataset done!')
+
+
 
     # evolving training
     print('Start training ...')
     for epoch in range(arg.resume_epoch, arg.max_epoch):
+        global_step_base = epoch * steps_per_epoch
         forward_times_per_epoch, sum_loss_decoder = 0, 0.
 
         if epoch in arg.step_values:
@@ -113,6 +122,8 @@ def train(arg):
 
         for data in tqdm.tqdm(dataloader):
             forward_times_per_epoch += 1
+            global_step = global_step_base + forward_times_per_epoch
+
             input_images, input_images_norm, gt_coords_xy = data
 
             if arg.cuda:
@@ -121,9 +132,10 @@ def train(arg):
                 gt_coords_xy = gt_coords_xy.cuda(device=devices[0])
 
             optimizer_decoder.zero_grad()
-            heatmaps_orig = estimator(input_images)[-1]
-            heatmaps = F.interpolate(heatmaps_orig, 256, mode='bicubic')
-            heatmaps[heatmaps < arg.boundary_cutoff_lambda * heatmaps.max()] = 0
+            with torch.no_grad():
+                heatmaps_orig = estimator(input_images)[-1]
+                heatmaps = F.interpolate(heatmaps_orig, 256, mode='bicubic')
+                heatmaps[heatmaps < arg.boundary_cutoff_lambda * heatmaps.max()] = 0
 
             fake_images_norm = decoder(heatmaps)
             loss_gp = criterion_gp(fake_images_norm, input_images_norm)
@@ -131,16 +143,30 @@ def train(arg):
             loss_simple = criterion_simple(fake_images_norm, input_images_norm)
             loss_decoder = arg.gp_loss_lambda * loss_gp + arg.cp_loss_lambda * loss_cp + loss_simple
 
+            log('loss_gp', loss_gp.item(), global_step)
+            log('loss_cp', loss_cp.item(), global_step)
+            log('loss_simple', loss_simple.item(), global_step)
+
             if criterion_feature is not None:
-                loss_decoder = loss_decoder + arg.feature_loss_lambda * criterion_feature(fake_images_norm, input_images_norm)
+                loss_feature = criterion_feature(fake_images_norm, input_images_norm)
+                loss_decoder = loss_decoder + arg.feature_loss_lambda * loss_feature
+
+                log('loss_feature', loss_feature.item(), global_step)
 
             if regressor is not None:
                 fake_images = denormalize(fake_images_norm, mean, std)
                 fake_images = rgb_to_grayscale(fake_images)
                 fake_images = normalize(fake_images, torch.mean(fake_images), torch.std(fake_images))
-                regressor_out = regressor(fake_images, heatmaps_orig)
+
+                with torch.no_grad():
+                    regressor_out = regressor(fake_images, heatmaps_orig)
+
                 loss_regressor = criterion_regressor(regressor_out, gt_coords_xy)
                 loss_decoder = loss_decoder + arg.regressor_loss_lambda * loss_regressor
+
+                log('loss_regressor', loss_regressor.item(), global_step)
+
+            log('loss_decoder', loss_decoder.item(), global_step)
 
             loss_decoder.backward()
             optimizer_decoder.step()

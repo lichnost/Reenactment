@@ -47,9 +47,9 @@ parser.add_argument('--gpu_id',             default='0',                 type=st
 # learning parameters
 parser.add_argument('--optimizer',          default='Lamb',          type=str,
                     choices=['Lamb', 'SGD'])
-parser.add_argument('--momentum',           default=0.9,                 type=float)
+parser.add_argument('--momentum',           default=0.1,                 type=float)
 parser.add_argument('--weight_decay',       default=5e-5,                type=float)
-parser.add_argument('--lr',                 default=1e-3,                type=float)
+parser.add_argument('--lr',                 default=5e-4,                type=float)
 parser.add_argument('--gamma',              default=0.2,                 type=float)
 parser.add_argument('--step_values',        default=[],        type=list)
 parser.add_argument('--max_epoch',          default=1500,                type=int)
@@ -60,8 +60,8 @@ parser.add_argument('--loss_type',          default='wingloss',          type=st
                     choices=['L1', 'L2', 'smoothL1', 'wingloss', 'adaptiveWingloss'])
 parser.add_argument('--gp_loss_type',       default='GPFullLoss',            type=str,
                     choices=['GPLoss', 'GPFullLoss', 'HeatmapLoss'])
-parser.add_argument('--gp_loss_lambda',     default=10,                 type=float)
-parser.add_argument('--cp_loss_lambda',     default=10,                 type=float)
+parser.add_argument('--gp_loss_lambda',     default=6,                 type=float)
+parser.add_argument('--cp_loss_lambda',     default=1,                 type=float)
 parser.add_argument('--wingloss_omega',         default=10,                  type=float)
 parser.add_argument('--wingloss_epsilon',         default=2,                   type=float)
 parser.add_argument('--wingloss_theta',         default=0.5,                  type=float)

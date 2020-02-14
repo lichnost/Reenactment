@@ -559,29 +559,28 @@ class Regressor(nn.Module):
         return out
 
 
-class HeatmapDiscrim(nn.Module):
-    channels, linear_n = [13, 64, 192, 384, 256, 256], [4096, 1024, 256, 13]
-    ker_size, strd, pad = [2, 5, 3, 3, 3], [2, 1, 1, 1, 1], [0, 2, 1, 1, 1]
-    maxpool_mask = [1, 1, 0, 0, 1]
-
-    def __init__(self, conv_layers=5, linear_layers=3):
-        super(HeatmapDiscrim, self).__init__()
+class Discrim(nn.Module):
+    def __init__(self, conv_layers=5, linear_layers=3,
+                 channels=[13, 64, 192, 384, 256, 256], linear_n=[4096, 1024, 256, 13],
+                 kernel_sizes=[2, 5, 3, 3, 3], strides=[2, 1, 1, 1, 1], pads=[0, 2, 1, 1, 1],
+                 maxpool_masks=[1, 1, 0, 0, 1]):
+        super(Discrim, self).__init__()
         conv_features = []
         linear_classify = []
         for index in range(conv_layers):
-            conv_features.append(nn.Conv2d(HeatmapDiscrim.channels[index], HeatmapDiscrim.channels[index + 1],
-                                           kernel_size=HeatmapDiscrim.ker_size[index],
-                                           stride=HeatmapDiscrim.strd[index],
-                                           padding=HeatmapDiscrim.pad[index],
+            conv_features.append(nn.Conv2d(channels[index], channels[index + 1],
+                                           kernel_size=kernel_sizes[index],
+                                           stride=strides[index],
+                                           padding=pads[index],
                                            bias=False))
-            conv_features.append(nn.BatchNorm2d(HeatmapDiscrim.channels[index + 1]))
+            conv_features.append(nn.BatchNorm2d(channels[index + 1]))
             conv_features.append(nn.ReLU(inplace=False))
-            if HeatmapDiscrim.maxpool_mask[index] == 1:
+            if maxpool_masks[index] == 1:
                 conv_features.append(nn.MaxPool2d(3, stride=2, padding=1))
             else:
                 conv_features.append(nn.ReLU(inplace=False))
         for index in range(linear_layers):
-            linear_classify.append(nn.Linear(HeatmapDiscrim.linear_n[index], HeatmapDiscrim.linear_n[index + 1]))
+            linear_classify.append(nn.Linear(linear_n[index], linear_n[index + 1]))
             if index != linear_layers - 1:
                 linear_classify.append(nn.ReLU(inplace=False))
             else:
@@ -603,6 +602,25 @@ class HeatmapDiscrim(nn.Module):
         out = self.classifier(out)
         return out
 
+
+class HeatmapDiscrim(nn.Module):
+    conv_layers, linear_layers = 5, 3
+    channels, linear_n = [13, 64, 192, 384, 256, 256], [4096, 1024, 256, 13]
+    kernel_sizes, strides, pads = [2, 5, 3, 3, 3], [2, 1, 1, 1, 1], [0, 2, 1, 1, 1]
+    maxpool_mask = [1, 1, 0, 0, 1]
+
+    def __init__(self):
+        self.discrim = Discrim(conv_layers=HeatmapDiscrim.conv_layers,
+                               linear_layers=HeatmapDiscrim.linear_layers,
+                               channels=HeatmapDiscrim.channels,
+                               linear_n=HeatmapDiscrim.linear_n,
+                               kernel_sizes=HeatmapDiscrim.kernel_sizes,
+                               strides=HeatmapDiscrim.strides,
+                               pads=HeatmapDiscrim.pads,
+                               maxpool_masks=HeatmapDiscrim.maxpool_mask)
+
+    def forward(self, x):
+        return self.discrim(x)
 
 class UNet(nn.Module):
     def __init__(

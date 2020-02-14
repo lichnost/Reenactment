@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.nn as nn
-from models import GPLoss, CPLoss, WingLoss, Estimator, Regressor, HeatmapDiscrim
+from models import GPLoss, CPLoss, WingLoss, Estimator, Regressor, Discrim
 from utils.dataset import GeneralDataset
 from torch.utils.data import ConcatDataset
 from utils import *
