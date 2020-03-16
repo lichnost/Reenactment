@@ -44,17 +44,17 @@ def train(arg):
     regressor = create_model_regressor(arg, devices)
     regressor.train()
 
+    discrim = None
     if arg.GAN:
         discrim = create_model_heatmap_discrim(arg, devices)
         discrim.train()
-    else:
-        discrim = None
 
     print('Creating networks done!')
 
     optimizer_estimator = create_optimizer(arg, estimator.parameters())
     optimizer_regressor = create_optimizer(arg, estimator.parameters())
-    optimizer_discrim = create_optimizer(arg, estimator.parameters()) if discrim is not None else None
+    if discrim is not None:
+        optimizer_discrim = create_optimizer(arg, estimator.parameters())
 
     if arg.loss_type == 'L2':
         criterion = nn.MSELoss()
@@ -73,8 +73,10 @@ def train(arg):
                                              num_workers=arg.workers, pin_memory=True)
     print('Loading dataset done!')
 
-    d_fake = (torch.zeros(arg.batch_size, 13)).cuda(device=devices[0]) if arg.GAN \
-        else torch.zeros(arg.batch_size, 13)
+    if arg.GAN:
+        d_fake = torch.zeros(arg.batch_size, 13)
+        if arg.cuda:
+            d_fake = d_fake.cuda(device=devices[0])
 
     # evolving training
     print('Start training ...')

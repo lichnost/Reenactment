@@ -185,4 +185,4 @@ def eval_CED(auc_record):
 
 
 def draw_circle(img, xy):
-    return cv2.circle(img, xy, 2, (0, 0, 255), -1)
+    return cv2.circle(img, xy, 2, (0, 0, 0), -1)

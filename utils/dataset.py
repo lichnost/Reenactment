@@ -1,5 +1,5 @@
 import torch.utils.data as data
-from utils import get_annotations_list, get_item_from
+from utils import get_annotations_list, get_item_from, show_img
 import cv2
 from kornia import image_to_tensor, bgr_to_rgb
 from .dataset_info import *
@@ -142,10 +142,10 @@ class DecoderDataset(data.Dataset):
         bbox = np.array(list(map(int, annotation[-7:-3])))
 
         translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(
-            type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical)
+            type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical, flip=False, gaussian=False)
 
-        horizontal_add = (bbox[3] - bbox[1]) * scaling_horizontal
-        vertical_add = (bbox[2] - bbox[0]) * scaling_vertical
+        horizontal_add = (bbox[2] - bbox[0]) * scaling_horizontal
+        vertical_add = (bbox[3] - bbox[1]) * scaling_vertical
         bbox = np.float32(
             [bbox[0] - horizontal_add, bbox[1] - vertical_add, bbox[2] + horizontal_add, bbox[3] + vertical_add])
 
@@ -159,11 +159,19 @@ class DecoderDataset(data.Dataset):
                                      [0, crop_size - 1],
                                      [crop_size - 1, crop_size - 1]])
         crop_matrix = cv2.getAffineTransform(position_before, position_after)
-        pic_crop_orig = cv2.warpAffine(pic_orig, crop_matrix, (crop_size, crop_size))
-        pic_crop_orig = further_transform(pic_crop_orig, bbox, flip, gaussian_blur) if type in [
-            'train'] else pic_crop_orig
-        affine_matrix = get_affine_matrix(crop_size, rotation, scaling)
-        pic_affine_orig = cv2.warpAffine(pic_crop_orig, affine_matrix, (crop_size, crop_size))
+        # crop_matrix = np.vstack([crop_matrix, [0, 0, 1]])
+        pic_affine_orig = cv2.warpAffine(pic_orig, crop_matrix, (crop_size, crop_size), borderMode=cv2.BORDER_REPLICATE)
+        # width_height = (bbox[2] - bbox[0], bbox[3] - bbox[1])
+        width_height = (crop_size, crop_size)
+        affine_matrix = get_affine_matrix(width_height, rotation, scaling)
+        # affine_matrix = np.vstack([affine_matrix, [0, 0, 1]])
+        # affine_matrix = np.matmul(crop_matrix, affine_matrix)
+        # TODO one transform
+        pic_affine_orig = cv2.warpAffine(pic_affine_orig, affine_matrix, (crop_size, crop_size), borderMode=cv2.BORDER_REPLICATE)
+        pic_affine_orig = further_transform(pic_affine_orig, bbox, flip, gaussian_blur) if type in ['train'] else pic_affine_orig
+
+        # show_img(pic_affine_orig, wait=0, keep=False)
+
         pic_affine_orig = np.float32(cv2.cvtColor(pic_affine_orig, cv2.COLOR_BGR2RGB))
 
         pic_affine_orig_norm = pic_normalize_color(pic_affine_orig, self.mean_color, self.std_color)
@@ -177,4 +185,5 @@ class DecoderDataset(data.Dataset):
         coord_x_cropped, coord_y_cropped = get_cropped_coords(dataset, crop_matrix, coord_x, coord_y, crop_size,
                                                               flip=flip)
         gt_coords_xy = get_gt_coords(dataset, affine_matrix, coord_x_cropped, coord_y_cropped)
+
         return pic_affine, pic_affine_orig_norm, gt_coords_xy

@@ -30,13 +30,13 @@ def main(arg):
     path_split = os.path.join(arg.dataset_route[arg.dataset], arg.split)
     annotation_lines = []
     if arg.video_path is None:
-
         for root, dirs, files in os.walk(path_split):
             for file in tqdm(files):
                 # print(file)
                 file_path = os.path.join(root, file)
                 img_original = cv2.imread(file_path)
-                annotation_lines = annotation_lines + detect_annotations(arg, img_original, estimator, regressor, face_detector, shape_predictor, points_num, file)
+                annotation_lines = annotation_lines + detect_annotations(arg, img_original, estimator, regressor,
+                                                                         face_detector, points_num, file, devices)
     else:
         if not os.path.exists(path_split):
             os.mkdir(path_split)
@@ -54,7 +54,8 @@ def main(arg):
 
             image_name_indexed = image_name + '_' + str(frame_idx) + '.jpg'
             image_path = os.path.join(arg.dataset_route[arg.dataset], arg.split, image_name_indexed)
-            detected_annotations = detect_annotations(arg, frame, estimator, regressor, face_detector, shape_predictor, points_num, image_name_indexed)
+            detected_annotations = detect_annotations(arg, frame, estimator, regressor, face_detector, points_num,
+                                                      image_name_indexed, devices)
             annotation_lines = annotation_lines + detected_annotations
             if len(detected_annotations) > 0:
                 cv2.imwrite(image_path, frame)
@@ -75,7 +76,7 @@ def main(arg):
             annotation_file.write(' '.join(line))
 
 
-def detect_annotations(arg, img_original, estimator, regressor, face_detector, shape_predictor, points_num, file):
+def detect_annotations(arg, img_original, estimator, regressor, face_detector, points_num, file, devices):
     annotation_lines = []
 
     faces = face_detector(img_original, 1)
@@ -83,63 +84,35 @@ def detect_annotations(arg, img_original, estimator, regressor, face_detector, s
         rec_list = face.rect
         height = rec_list.bottom() - rec_list.top()
         width = rec_list.right() - rec_list.left()
+        # detect coords firstly to normalize face position
         bbox = [
             int(rec_list.left() - arg.scale_ratio * width),
             int(rec_list.top() - arg.scale_ratio * height),
             int(rec_list.right() + arg.scale_ratio * width),
             int(rec_list.bottom() + arg.scale_ratio * height)
         ]
-        position_before = np.float32([
-            [int(bbox[0]), int(bbox[1])],
-            [int(bbox[0]), int(bbox[3])],
-            [int(bbox[2]), int(bbox[3])]
-        ])
-        position_after = np.float32([[0, 0],
-                                     [0, arg.crop_size - 1],
-                                     [arg.crop_size - 1, arg.crop_size - 1]])
-        crop_matrix = cv2.getAffineTransform(position_before, position_after)
-        inv_crop_matrix = cv2.invertAffineTransform(crop_matrix)
 
-        # cv2.imshow('img_original', img_original[rec_list.top():rec_list.top()+height, rec_list.left():rec_list.left()+width])
-        # cv2.waitKey()
-        # cv2.destroyWindow('img_original')
-
-        img_color = cv2.warpAffine(img_original, crop_matrix, (arg.crop_size, arg.crop_size))
-
-        # cv2.imshow('img', img)
-        # cv2.waitKey()
-        # cv2.destroyWindow('img')
-        img_color = np.float32(cv2.cvtColor(img_color, cv2.COLOR_BGR2RGB))
-        img = convert_img_to_gray(img_color)
-        img = pic_normalize_gray(img)
-
-        input = torch.Tensor(img)
-        input = input.unsqueeze(0)
-        input = input.unsqueeze(0).cuda()
-
-        heatmap = estimator(input)[-1]
-        coords = regressor(input, heatmap).detach().cpu().squeeze().numpy()  # output x and y: points_num*2
-        # coords_5p = shape_predictor(img_color, dlib.rectangle(0, 0, arg.crop_size - 1, arg.crop_size - 1))
-
-        # for index in range(coords_5p.num_parts):
-        #     point = coords_5p.part(index)
-        #     x, y = point.x, point.y
-        #     (x_t, y_t) = coord_transform((x, y), inv_crop_matrix)
-        #     # annotation.append(x_t)
-        #     # annotation.append(y_t)
-        #
-        #     # cv2.circle(img_original, (int(x_t), int(y_t)), 2, (0, 0, 255), -1)
-        #     # cv2.circle(img_color, (int(x), int(y)), 2, (0, 0, 255), -1)
+        coords, _, inv_crop_matrix, _ = detect_coords(arg, img_original, bbox, arg.crop_size, estimator, regressor, devices)
 
         annotation = []
+
         for index in range(points_num):
             x, y = coords[2 * index], coords[2 * index + 1]
             (x_t, y_t) = coord_transform((x, y), inv_crop_matrix)
+            coords[2 * index], coords[2 * index + 1] = x_t, y_t
+
             annotation.append(x_t)
             annotation.append(y_t)
 
             # cv2.circle(img_original, (int(x_t), int(y_t)), 2, (0, 0, 255), -1)
-            # cv2.circle(img_color, (int(x), int(y)), 2, (0, 255, 0), -1)
+
+        bbox = normalized_bbox(coords, arg.dataset)
+        bbox = [
+            int(bbox[0]),
+            int(bbox[1]),
+            int(bbox[2]),
+            int(bbox[3])
+        ]
 
         # bbox
         annotation.append(bbox[0])
@@ -155,12 +128,10 @@ def detect_annotations(arg, img_original, estimator, regressor, face_detector, s
         annotation.append(os.path.join(arg.split, file))
         annotation_lines.append(annotation)
 
+        # cv2.rectangle(img_original, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 2)
         # cv2.imshow('original', img_original)
         # cv2.waitKey()
         # cv2.destroyWindow('original')
-        # cv2.imshow('img_color', img_color)
-        # cv2.waitKey(200)
-        # cv2.destroyWindow('img_color')
 
     return annotation_lines
 

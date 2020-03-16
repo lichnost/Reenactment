@@ -4,6 +4,7 @@ import os
 import dlib
 import torch.nn.functional as F
 from kornia.color import denormalize
+from kornia.geometry.transform import warp_affine
 
 from utils import *
 from utils.args import parse_args
@@ -19,6 +20,10 @@ def main(arg):
     print('Loading network ...')
     estimator = create_model_estimator(arg, devices, eval=True)
     estimator.eval()
+
+    if arg.normalized_bbox:
+        regressor = create_model_regressor(arg, devices, eval=True)
+        regressor.eval()
 
     decoder = create_model_decoder(arg, devices, eval=True)
     decoder.eval()
@@ -41,7 +46,10 @@ def main(arg):
     while cap.isOpened():      # isOpened()  Detect if the camera is on
         ret, img = cap.read()  # Save the image information obtained by the camera to the img variable
         if ret is True:        # If the camera reads the image successfully
-            # cv2.imshow('Image', img)
+
+            # if arg.eval_visual:
+            #     show_img(img, 'source', wait=1, keep=True)
+
             k = cv2.waitKey(1)
             if arg.realtime or k == ord('c') or k == ord('C'):
 
@@ -60,29 +68,66 @@ def main(arg):
                             int(rec_list.right() + arg.scale_ratio * width),
                             int(rec_list.bottom() + arg.scale_ratio * height)
                         ]
-                        position_before = np.float32([
-                            [int(bbox[0]), int(bbox[1])],
-                            [int(bbox[0]), int(bbox[3])],
-                            [int(bbox[2]), int(bbox[3])]
-                        ])
-                        position_after = np.float32([
-                            [0, 0],
-                            [0, 255],
-                            [255, 255]
-                        ])
-                        crop_matrix = cv2.getAffineTransform(position_before, position_after)
-                        face_img = cv2.warpAffine(img, crop_matrix, (256, 256))
-                        face_gray = convert_img_to_gray(face_img)
-                        face_norm = pic_normalize_gray(face_gray)
 
-                        input_face = torch.Tensor(face_norm)
-                        input_face = input_face.unsqueeze(0).unsqueeze(0)
-                        if arg.cuda:
-                            input_face = input_face.cuda(device=devices[0])
+                        if arg.normalized_bbox:
+                            coords, crop_matrix, inv_crop_matrix, heatmaps = detect_coords(arg, img, bbox, arg.crop_size, estimator,
+                                                                    regressor, devices)
+                            for index in range(kp_num[arg.dataset]):
+                                x, y = coords[2 * index], coords[2 * index + 1]
+                                (x_t, y_t) = coord_transform((x, y), inv_crop_matrix)
+                                coords[2 * index], coords[2 * index + 1] = x_t, y_t
 
-                        heatmaps_orig = estimator(input_face)
-                        heatmaps = heatmaps_orig[-1]
-                        heatmaps = F.interpolate(heatmaps, 256, mode='bicubic')
+
+                            inv_crop_matrix = torch.tensor(np.float32(inv_crop_matrix[np.newaxis, :, :]))
+                            if arg.cuda:
+                                inv_crop_matrix = inv_crop_matrix.cuda(device=devices[0])
+                            heatmaps = F.interpolate(heatmaps, arg.crop_size, mode='bicubic')
+                            heatmaps = warp_affine(heatmaps, inv_crop_matrix, (img.shape[0], img.shape[1]), padding_mode='border')
+
+                            norm_bbox = normalized_bbox(coords, arg.dataset, face_size=0.4)
+                            position_before = np.float32([
+                                [int(norm_bbox[0]), int(norm_bbox[1])],
+                                [int(norm_bbox[0]), int(norm_bbox[3])],
+                                [int(norm_bbox[2]), int(norm_bbox[3])]
+                            ])
+                            position_after = np.float32([
+                                [0, 0],
+                                [0, 63],
+                                [63, 63]
+                            ])
+
+                            crop_matrix = cv2.getAffineTransform(position_before, position_after)
+                            crop_matrix = torch.tensor(np.float32(crop_matrix[np.newaxis, :, :]))
+                            if arg.cuda:
+                                crop_matrix = crop_matrix.cuda(device=devices[0])
+                            heatmaps = warp_affine(heatmaps, crop_matrix, (64, 64), padding_mode='border')
+
+                        else:
+                            position_before = np.float32([
+                                [int(bbox[0]), int(bbox[1])],
+                                [int(bbox[0]), int(bbox[3])],
+                                [int(bbox[2]), int(bbox[3])]
+                            ])
+                            position_after = np.float32([
+                                [0, 0],
+                                [0, arg.crop_size - 1],
+                                [arg.crop_size - 1, arg.crop_size - 1]
+                            ])
+                            crop_matrix = cv2.getAffineTransform(position_before, position_after)
+                            face_img = cv2.warpAffine(img, crop_matrix, (arg.crop_size, arg.crop_size))
+                            face_gray = convert_img_to_gray(face_img)
+                            face_norm = pic_normalize_gray(face_gray)
+
+                            input_face = torch.Tensor(face_norm)
+                            input_face = input_face.unsqueeze(0).unsqueeze(0)
+                            if arg.cuda:
+                                input_face = input_face.cuda(device=devices[0])
+
+                            heatmaps_orig = estimator(input_face)
+                            heatmaps = heatmaps_orig[-1]
+
+
+                        # heatmaps = F.interpolate(heatmaps, arg.crop_size, mode='bicubic')
                         heatmaps[heatmaps < arg.boundary_cutoff_lambda * heatmaps.max()] = 0
 
                         fake_image_norm = decoder(heatmaps).detach()
@@ -90,14 +135,14 @@ def main(arg):
                         fake_image = np.uint8(np.moveaxis(fake_image, 0, -1))
                         fake_image = cv2.cvtColor(fake_image, cv2.COLOR_RGB2BGR)
 
-                        show_img(img, 'source', wait=1, keep=True)
-                        show_img(fake_image, 'target', wait=1, keep=True)
+                        if arg.eval_visual:
+                            show_img(fake_image, 'target', wait=1, keep=True)
 
-                        heatmap_show = get_heatmap_gray(heatmaps).detach().cpu().numpy()
-                        heatmap_show = (
-                                    255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
-                        heatmap_show = np.moveaxis(heatmap_show, 0, -1)
-                        show_img(heatmap_show, 'heatmap', wait=1, keep=True)
+                            # heatmap_show = get_heatmap_gray(heatmaps).detach().cpu().numpy()
+                            # heatmap_show = (
+                            #         255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
+                            # heatmap_show = np.moveaxis(heatmap_show, 0, -1)
+                            # show_img(heatmap_show, 'heatmap', wait=1, keep=True)
 
 
             if k == ord('q') or k == ord('Q'):

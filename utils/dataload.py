@@ -59,14 +59,14 @@ def convert_img_to_gray(img):
         raise Exception("img shape wrong!\n")
 
 
-def get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical):
+def get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical, flip=True, gaussian=True):
     translation = 0
     trans_dir = 0
     rotation = 0
     scaling = 1.0
     scaling_horizontal = 0.0
     scaling_vertical = 0.0
-    flip = 0
+    flip_num = 0
     gaussian_blur = 0
     if type in ['train']:
         random.seed(time.time())
@@ -75,11 +75,11 @@ def get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_rati
         trans_dir = random.randint(0, 3)  # LU:0 RU:1 LL:2 RL:3
         rotation = random.uniform(-rotate_limit, rotate_limit)
         scaling = random.uniform(1-scale_ratio, 1+scale_ratio)
-        scaling_horizontal = random.uniform(1 - scale_horizontal, 1 + scale_horizontal)
-        scaling_vertical = random.uniform(1 - scale_vertical, 1+scale_vertical)
-        flip = random.randint(0, 1)
-        gaussian_blur = random.randint(0, 1)
-    return translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur
+        scaling_horizontal = random.uniform(-scale_horizontal, scale_horizontal)
+        scaling_vertical = random.uniform(-scale_vertical, scale_vertical)
+        flip_num = random.randint(0, 1) if flip else 0
+        gaussian_blur = random.randint(0, 1) if gaussian else 0
+    return translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip_num, gaussian_blur
 
 
 def further_transform(pic, bbox, flip, gaussian_blur):
@@ -91,8 +91,8 @@ def further_transform(pic, bbox, flip, gaussian_blur):
         return cv2.GaussianBlur(pic, (5, 5), 1)
 
 
-def get_affine_matrix(crop_size, rotation, scaling):
-    center = (crop_size / 2.0, crop_size / 2.0)
+def get_affine_matrix(width_height, rotation, scaling):
+    center = (width_height[0] / 2.0, width_height[1] / 2.0)
     return cv2.getRotationMatrix2D(center, rotation, scaling)
 
 
@@ -245,8 +245,8 @@ def get_item_from(dataset_route, dataset, split, type, annotation, crop_size, RG
 
     translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical)
 
-    horizontal_add = (bbox[3] - bbox[1]) * scaling_horizontal
-    vertical_add = (bbox[2] - bbox[0]) * scaling_vertical
+    horizontal_add = (bbox[2] - bbox[0]) * scaling_horizontal
+    vertical_add = (bbox[3] - bbox[1]) * scaling_vertical
     bbox = np.float32([bbox[0] - horizontal_add, bbox[1] - vertical_add, bbox[2] + horizontal_add, bbox[3] + vertical_add])
 
     position_before = np.float32([[int(bbox[0]) + pow(-1, trans_dir+1)*translation,
@@ -259,11 +259,18 @@ def get_item_from(dataset_route, dataset, split, type, annotation, crop_size, RG
                                  [0, crop_size - 1],
                                  [crop_size - 1, crop_size - 1]])
     crop_matrix = cv2.getAffineTransform(position_before, position_after)
-    pic_crop_orig = cv2.warpAffine(pic_orig, crop_matrix, (crop_size, crop_size))
-    pic_crop_orig = further_transform(pic_crop_orig, bbox, flip, gaussian_blur) if type in ['train'] else pic_crop_orig
-    affine_matrix = get_affine_matrix(crop_size, rotation, scaling)
-    pic_affine_orig = cv2.warpAffine(pic_crop_orig, affine_matrix, (crop_size, crop_size))
-    pic_affine_orig = np.float32(cv2.cvtColor(pic_affine_orig, cv2.COLOR_BGR2RGB))
+    # crop_matrix = np.vstack([crop_matrix, [0, 0, 1]])
+    pic_affine_orig = cv2.warpAffine(pic_orig, crop_matrix, (crop_size, crop_size), borderMode=cv2.BORDER_REPLICATE)
+    # width_height = (bbox[2] - bbox[0], bbox[3] - bbox[1])
+    width_height = (crop_size, crop_size)
+    affine_matrix = get_affine_matrix(width_height, rotation, scaling)
+    # affine_matrix = np.vstack([affine_matrix, [0, 0, 1]])
+    # affine_matrix = np.matmul(crop_matrix, affine_matrix)
+    # TODO one transform
+    pic_affine_orig = cv2.warpAffine(pic_affine_orig, affine_matrix, (crop_size, crop_size),
+                                     borderMode=cv2.BORDER_REPLICATE)
+    pic_affine_orig = further_transform(pic_affine_orig, bbox, flip, gaussian_blur) if type in [
+        'train'] else pic_affine_orig
 
     mean_color, std_color = get_mean_std_color(dataset, split)
     mean_gray, std_gray = get_mean_std_gray(dataset, split)
@@ -281,9 +288,14 @@ def get_item_from(dataset_route, dataset, split, type, annotation, crop_size, RG
 
     gt_heatmap = get_gt_heatmap(dataset, gt_coords_xy, crop_size, sigma)
 
-    # show_img(pic_crop)
-    # show_img(pic_affine)
-    # watch_gray_heatmap(gt_heatmap)
+    # heatmap_sum = gt_heatmap[0]
+    # for index in range(boundary_num - 1):
+    #     heatmap_sum += gt_heatmap[index + 1]
+    #
+    # for i in range(0, 2*kp_num[dataset], 2):
+    #     draw_circle(heatmap_sum, (int(gt_coords_xy[i]/4), int(gt_coords_xy[i+1]/4)))
+    #
+    # show_img(heatmap_sum)
 
     pic_affine_orig = np.moveaxis(pic_affine_orig, -1, 0)
     return pic_affine_orig, pic_affine, pic_affine_orig_norm, gt_coords_xy, gt_heatmap, coord_xy, bbox, annotation[-1]

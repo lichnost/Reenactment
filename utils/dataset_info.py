@@ -67,7 +67,8 @@ dataset_size = {
     },
     'Faces': {
         'PavelSemenov':    5053,
-        'Adush':           7089
+        'Adush':           7089,
+        'DonaldTrump':     39800
     }
 }
 
@@ -239,31 +240,47 @@ nparts = {  # [chin, brow, nose, eyes, mouth], totally 5 parts
 
 # [R, G, B]
 means_color = {
+    'WFLW' : {
+        'train' : [121.9431, 109.9834, 103.8265]
+    },
     'Faces': {
-        'PavelSemenov' : [127.9747, 121.5213, 116.7318],
-        'Adush' : [134.8850, 113.0359, 106.5454]
+        'PavelSemenov': [127.9747, 121.5213, 116.7318],
+        'Adush': [134.0603, 112.3645, 105.7585],
+        'DonaldTrump': [112.5789,  88.4065,  77.6387]
     }
 }
 
 # [R, G, B]
 stds_color = {
+    'WFLW' : {
+        'train' : [69.0449, 66.0566, 65.7376]
+    },
     'Faces': {
-        'PavelSemenov' : [75.9127, 73.5458, 73.5602],
-        'Adush' : [48.1531, 52.9784, 54.2879]
+        'PavelSemenov': [75.9127, 73.5458, 73.5602],
+        'Adush': [48.5046, 53.2059, 54.5474],
+        'DonaldTrump': [64.8365, 45.0323, 42.1931]
     }
 }
 
 means_gray = {
+    'WFLW' : {
+        'train' : 112.8571
+    },
     'Faces': {
         'PavelSemenov': 122.9053,
-        'Adush': 118.8288
+        'Adush': 118.0988,
+        'DonaldTrump': 94.4065
     }
 }
 
 
 stds_gray = {
+    'WFLW' : {
+        'train' : 64.8045
+    },
     'Faces': {
         'PavelSemenov': 73.9678,
-        'Adush': 50.1038
+        'Adush': 50.3819,
+        'DonaldTrump': 48.2041
     }
 }

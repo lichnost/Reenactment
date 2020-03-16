@@ -5,6 +5,9 @@ import numpy as np
 from sklearn.metrics import auc
 from utils import *
 import torch_optimizer as optim
+from torch.optim import lr_scheduler
+from kornia.geometry.transform import warp_affine
+from torch.nn import init
 
 def get_devices_list(arg):
     devices_list = [torch.device('cpu')]
@@ -36,7 +39,7 @@ def create_model_estimator(arg, devices_list, eval=False):
     from models import Estimator
     resume_epoch = arg.eval_epoch_estimator if eval else arg.resume_epoch
 
-    estimator = Estimator(gp_loss_lambda=arg.gp_loss_lambda,
+    estimator = Estimator(gp_loss_lambda=arg.loss_gp_lambda,
                           stacks=arg.hour_stack, msg_pass=arg.msg_pass)
 
     if resume_epoch > 0:
@@ -70,14 +73,35 @@ def create_model_regressor(arg, devices_list, eval=False):
 
 def create_model_heatmap_discrim(arg, devices_list, eval=False):
     from models import HeatmapDiscrim
-    resume_epoch = arg.eval_epoch_discriminator if eval else arg.resume_epoch
+    resume_epoch = arg.eval_epoch_boundary_discriminator if eval else arg.resume_epoch
 
     discrim = HeatmapDiscrim()
 
     if resume_epoch > 0:
-        load_path = arg.resume_folder + 'discrim_' + str(resume_epoch) + '.pth'
+        load_path = arg.resume_folder + 'discrim_boundary_' + str(resume_epoch) + '.pth'
         print('Loading discriminator from ' + load_path)
         discrim = load_weights(discrim, load_path, devices_list[0])
+
+    if arg.cuda:
+        discrim = discrim.cuda(device=devices_list[0])
+
+    return discrim
+
+
+def create_model_decoder_discrim(arg, devices_list, eval=False):
+    from models import DecoderTransformerDiscrim
+    resume_dataset = arg.eval_dataset_decoder if eval else arg.dataset
+    resume_split = arg.eval_split_decoder if eval else arg.split
+    resume_epoch = arg.eval_epoch_decoder_discriminator if eval else arg.resume_epoch
+
+    discrim = DecoderTransformerDiscrim()
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'decoder_discrim_'+resume_dataset+'_'+resume_split+'_'+ str(resume_epoch) + '.pth'
+        print('Loading decoder discriminator from ' + load_path)
+        discrim = load_weights(discrim, load_path, devices_list[0])
+    else:
+        init_weights(discrim)
 
     if arg.cuda:
         discrim = discrim.cuda(device=devices_list[0])
@@ -97,6 +121,8 @@ def create_model_decoder(arg, devices_list, eval=False):
         load_path = arg.resume_folder + 'decoder_' + resume_dataset + '_' + resume_split + '_' + str(resume_epoch) + '.pth'
         print('Loading decoder from ' + load_path)
         decoder = load_weights(decoder, load_path, devices_list[0])
+    else:
+        init_weights(decoder)
 
     if arg.cuda:
         decoder = decoder.cuda(device=devices_list[0])
@@ -120,6 +146,128 @@ def create_model_pca(arg, devices_list, eval=False):
         pca = pca.cuda(device=devices_list[0])
 
     return pca
+
+
+def create_model_transformer_a2b(arg, devices_list, eval=False):
+    from models import Transformer
+    resume_dataset = arg.eval_dataset_pca if eval else arg.dataset
+    resume_a = arg.eval_split_source_trasformer if eval else arg.split_source
+    resume_b = arg.eval_split_trasformer if eval else arg.split
+    resume_epoch = arg.eval_epoch_pca if eval else arg.resume_epoch
+
+    transformer = Transformer(in_channels=boundary_num, out_channels=boundary_num)
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'transformer_'+resume_dataset+'_'+resume_a+'2'+resume_b+'_' + str(resume_epoch) + '.pth'
+        print('Loading Transformer from ' + load_path)
+        transformer = load_weights(transformer, load_path, devices_list[0])
+    else:
+        init_weights(transformer, init_type='transformer')
+        # init_weights(transformer)
+
+    if arg.cuda:
+        transformer = transformer.cuda(device=devices_list[0])
+
+    return transformer
+
+
+def create_model_transformer_b2a(arg, devices_list, eval=False):
+    from models import Transformer
+    resume_dataset = arg.eval_dataset_pca if eval else arg.dataset
+    resume_b = arg.eval_split_source_trasformer if eval else arg.split_source
+    resume_a = arg.eval_split_trasformer if eval else arg.split
+    resume_epoch = arg.eval_epoch_pca if eval else arg.resume_epoch
+
+    transformer = Transformer(in_channels=boundary_num, out_channels=boundary_num)
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'transformer_'+resume_dataset+'_'+resume_b+'2'+resume_a+'_' + str(resume_epoch) + '.pth'
+        print('Loading Transformer from ' + load_path)
+        transformer = load_weights(transformer, load_path, devices_list[0])
+    else:
+        init_weights(transformer, init_type='transformer')
+        # init_weights(transformer)
+
+    if arg.cuda:
+        transformer = transformer.cuda(device=devices_list[0])
+
+    return transformer
+
+
+def create_model_transformer_discrim_a(arg, devices_list, eval=False):
+    from models import DecoderTransformerDiscrim
+    resume_dataset = arg.eval_dataset_pca if eval else arg.dataset
+    resume_split = arg.eval_split_source_trasformer if eval else arg.split_source
+    resume_epoch = arg.eval_epoch_pca if eval else arg.resume_epoch
+
+    discrim = DecoderTransformerDiscrim(in_channels=boundary_num)
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'transformer_discrim_'+resume_dataset+'_'+resume_split+'_' + str(resume_epoch) + '.pth'
+        print('Loading transformer discriminator from ' + load_path)
+        discrim = load_weights(discrim, load_path, devices_list[0])
+    else:
+        init_weights(discrim, init_type='transformer')
+        # init_weights(discrim)
+
+    if arg.cuda:
+        discrim = discrim.cuda(device=devices_list[0])
+
+    return discrim
+
+
+def create_model_transformer_discrim_b(arg, devices_list, eval=False):
+    from models import DecoderTransformerDiscrim
+    resume_dataset = arg.eval_dataset_pca if eval else arg.dataset
+    resume_split = arg.eval_split_trasformer if eval else arg.split
+    resume_epoch = arg.eval_epoch_pca if eval else arg.resume_epoch
+
+    discrim = DecoderTransformerDiscrim(in_channels=boundary_num)
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'transformer_discrim_'+resume_dataset+'_'+resume_split+'_' + str(resume_epoch) + '.pth'
+        print('Loading transformer discriminator from ' + load_path)
+        discrim = load_weights(discrim, load_path, devices_list[0])
+    else:
+        init_weights(discrim, init_type='transformer')
+        # init_weights(discrim)
+
+    if arg.cuda:
+        discrim = discrim.cuda(device=devices_list[0])
+
+    return discrim
+
+
+def create_model_align(arg, devices_list, eval=False):
+    from models import Align
+    resume_dataset = arg.eval_dataset_align if eval else arg.dataset
+    resume_epoch = arg.eval_epoch_align if eval else arg.resume_epoch
+
+    align = Align()
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'align_' + resume_dataset + '_' + str(resume_epoch) + '.pth'
+        print('Loading align from ' + load_path)
+        align = load_weights(align, load_path, devices_list[0])
+    else:
+        init_weights(align)
+
+    if arg.cuda:
+        align = align.cuda(device=devices_list[0])
+
+    return align
+
+
+def create_model_edge(arg, devices_list, eval=False):
+    from kornia.filters import Laplacian, Sobel
+
+    # edge = Laplacian(3)
+    edge = Sobel()
+
+    if arg.cuda:
+        edge = edge.cuda(device=devices_list[0])
+
+    return edge
 
 
 def calc_d_fake(dataset, pred_coords, gt_coords, bcsize, bcsize_set, delta, theta):
@@ -152,6 +300,31 @@ def calc_d_fake(dataset, pred_coords, gt_coords, bcsize, bcsize_set, delta, thet
             dfake[batch_index] = dfake[batch_index - bcsize]
     return dfake
 
+def eye_centers(coords, dataset):
+    if l_eye_center_index_x[dataset].__class__ != list:
+        left_center = [coords[l_eye_center_index_x[dataset]], coords[l_eye_center_index_y[dataset]]]
+        right_center = [coords[r_eye_center_index_x[dataset]], coords[r_eye_center_index_y[dataset]]]
+
+        return left_center, right_center
+    else:
+        length = len(l_eye_center_index_x[dataset])
+        l_eye_x_avg, l_eye_y_avg, r_eye_x_avg, r_eye_y_avg = 0., 0., 0., 0.
+        for i in range(length):
+            l_eye_x_avg += coords[l_eye_center_index_x[dataset][i]]
+            l_eye_y_avg += coords[l_eye_center_index_y[dataset][i]]
+            r_eye_x_avg += coords[r_eye_center_index_x[dataset][i]]
+            r_eye_y_avg += coords[r_eye_center_index_y[dataset][i]]
+        l_eye_x_avg /= length
+        l_eye_y_avg /= length
+        r_eye_x_avg /= length
+        r_eye_y_avg /= length
+
+        left_center = [l_eye_x_avg, l_eye_y_avg]
+        right_center = [r_eye_x_avg, r_eye_y_avg]
+
+        return left_center, right_center
+
+
 
 def calc_normalize_factor(dataset, gt_coords_xy, normalize_way='inter_pupil'):
     if normalize_way == 'inter_ocular':
@@ -162,28 +335,10 @@ def calc_normalize_factor(dataset, gt_coords_xy, normalize_way='inter_pupil'):
             (gt_coords_xy[0][lo_eye_corner_index_y[dataset]] - gt_coords_xy[0][ro_eye_corner_index_y[dataset]]))
         return error_normalize_factor
     elif normalize_way == 'inter_pupil':
-        if l_eye_center_index_x[dataset].__class__ != list:
-            error_normalize_factor = np.sqrt(
-                (gt_coords_xy[0][l_eye_center_index_x[dataset]] - gt_coords_xy[0][r_eye_center_index_x[dataset]]) *
-                (gt_coords_xy[0][l_eye_center_index_x[dataset]] - gt_coords_xy[0][r_eye_center_index_x[dataset]]) +
-                (gt_coords_xy[0][l_eye_center_index_y[dataset]] - gt_coords_xy[0][r_eye_center_index_y[dataset]]) *
-                (gt_coords_xy[0][l_eye_center_index_y[dataset]] - gt_coords_xy[0][r_eye_center_index_y[dataset]]))
-            return error_normalize_factor
-        else:
-            length = len(l_eye_center_index_x[dataset])
-            l_eye_x_avg, l_eye_y_avg, r_eye_x_avg, r_eye_y_avg = 0., 0., 0., 0.
-            for i in range(length):
-                l_eye_x_avg += gt_coords_xy[0][l_eye_center_index_x[dataset][i]]
-                l_eye_y_avg += gt_coords_xy[0][l_eye_center_index_y[dataset][i]]
-                r_eye_x_avg += gt_coords_xy[0][r_eye_center_index_x[dataset][i]]
-                r_eye_y_avg += gt_coords_xy[0][r_eye_center_index_y[dataset][i]]
-            l_eye_x_avg /= length
-            l_eye_y_avg /= length
-            r_eye_x_avg /= length
-            r_eye_y_avg /= length
-            error_normalize_factor = np.sqrt((l_eye_x_avg - r_eye_x_avg) * (l_eye_x_avg - r_eye_x_avg) +
-                                             (l_eye_y_avg - r_eye_y_avg) * (l_eye_y_avg - r_eye_y_avg))
-            return error_normalize_factor
+        left_center, right_center = eye_centers(gt_coords_xy, dataset)
+        error_normalize_factor = np.sqrt((left_center[0] - right_center[0]) * (left_center[0] - right_center[0]) +
+                                         (left_center[1] - right_center[1]) * (left_center[1] - right_center[1]))
+        return error_normalize_factor
 
 
 def inverse_affine(arg, pred_coords, bbox):
@@ -221,8 +376,20 @@ def calc_auc(dataset, split, error_rate, max_threshold):
     return auc(threshold, accuracys) / max_threshold, accuracys
 
 
-def get_heatmap_gray(heatmaps):
+def calc_heatmap_loss_gp(criterion_gp, heatmaps_pred, heatmaps_target):
+    loss = None
+    for i in range(heatmaps_pred.size(1)):
+        pred = heatmaps_pred[:, i, ...]
+        target = heatmaps_target[:, i, ...]
+        loss = criterion_gp(pred, target) if loss is None else loss + criterion_gp(pred, target)
+    return loss
+
+
+def get_heatmap_gray(heatmaps, denorm=False, denorm_base=255):
     result = torch.sum(heatmaps, dim=1)
+    if denorm:
+        result = result - torch.min(result)
+        result = result * (denorm_base / torch.max(result))
     return result
 
 def coord_transform(xy, crop_matrix):
@@ -230,12 +397,19 @@ def coord_transform(xy, crop_matrix):
             crop_matrix[1][0] * xy[0] + crop_matrix[1][1] * xy[1] + crop_matrix[1][2])
 
 
-def create_optimizer(arg, parameters):
+def create_optimizer(arg, parameters, create_scheduler=False):
     if arg.optimizer == 'Lamb':
         optimizer = optim.Lamb(
             parameters,
             lr=arg.lr,
             weight_decay=arg.weight_decay
+        )
+    elif arg.optimizer == 'Adam':
+        optimizer = torch.optim.Adam(
+            parameters,
+            lr=arg.lr,
+            weight_decay=arg.weight_decay,
+            betas=(0.5, 0.999)
         )
     else:
         optimizer = torch.optim.SGD(
@@ -245,4 +419,107 @@ def create_optimizer(arg, parameters):
             weight_decay=arg.weight_decay
         )
 
-    return optimizer
+    if create_scheduler:
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=4, threshold=1e-2, verbose=True)
+    else:
+        scheduler = None
+
+    return optimizer, scheduler
+
+
+def normalized_bbox(coords, dataset, resize_type='height', face_size=0.4, top_shift=0.5):
+    points_num = kp_num[dataset]
+
+    if resize_type == 'width':
+        coords_x = coords[:2 * points_num:2]
+        width = (coords_x.max() - coords_x.min()) / face_size
+        height = width
+    else:
+        coords_y = coords[1:2 * points_num:2]
+        height = (coords_y.max() - coords_y.min()) / face_size
+        width = height
+
+    left_center, right_center = eye_centers(coords, dataset)
+    centers = np.mean(np.array([left_center, right_center]), axis=0)
+
+    return [
+        centers[0] - width / 2,
+        centers[1] - height * top_shift,
+        centers[0] + width / 2,
+        centers[1] + height * (1 - top_shift)
+    ]
+
+def detect_coords(arg, img, bbox, crop_size, estimator, regressor, devices):
+    position_before = np.float32([
+        [int(bbox[0]), int(bbox[1])],
+        [int(bbox[0]), int(bbox[3])],
+        [int(bbox[2]), int(bbox[3])]
+    ])
+    position_after = np.float32([[0, 0],
+                                 [0, crop_size - 1],
+                                 [crop_size - 1, crop_size - 1]])
+    crop_matrix = cv2.getAffineTransform(position_before, position_after)
+    inv_crop_matrix = cv2.invertAffineTransform(crop_matrix)
+
+    img_color = cv2.warpAffine(img, crop_matrix, (crop_size, crop_size))
+
+    # cv2.imshow('img_crop',
+    #            img[bbox[1]:bbox[3], bbox[0]:bbox[2]])
+    # cv2.waitKey()
+    # cv2.destroyWindow('img_crop')
+    #
+    # cv2.imshow('img_color', img_color)
+    # cv2.waitKey()
+    # cv2.destroyWindow('img_color')
+
+    img_color = np.float32(cv2.cvtColor(img_color, cv2.COLOR_BGR2RGB))
+    img = convert_img_to_gray(img_color)
+    img = pic_normalize_gray(img)
+
+    input = torch.Tensor(img)
+    input = input.unsqueeze(0).unsqueeze(0)
+    if arg.cuda:
+        input = input.cuda(device=devices[0])
+
+    heatmap = estimator(input)[-1]
+    coords = regressor(input, heatmap).detach().cpu().squeeze().numpy()  # output x and y: points_num*2
+    return coords, crop_matrix, inv_crop_matrix, heatmap
+
+
+def print_network(net):
+    num_params = 0
+    for param in net.parameters():
+        num_params += param.numel()
+    print(net)
+    print('Total number of parameters: %d' % num_params)
+
+
+def weights_init_transformer(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1 and classname.find('DeformConvNet') == -1:
+        m.weight.data.normal_(0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        m.weight.data.normal_(1.0, 0.02)
+        m.bias.data.fill_(0)
+
+
+def weights_init_normal(m):
+    classname = m.__class__.__name__
+    # print(classname)
+    if classname.find('Conv') != -1:
+        init.normal_(m.weight.data, 0.0, 0.02)
+    elif classname.find('Linear') != -1:
+        init.normal_(m.weight.data, 0.0, 0.02)
+    elif classname.find('BatchNorm2d') != -1:
+        init.normal_(m.weight.data, 1.0, 0.02)
+        init.constant_(m.bias.data, 0.0)
+
+
+def init_weights(net, init_type='normal'):
+    print('initialization method [%s]' % init_type)
+    if init_type == 'normal':
+        net.apply(weights_init_normal)
+    elif init_type == 'transformer':
+        net.apply(weights_init_transformer)
+    else:
+        raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
