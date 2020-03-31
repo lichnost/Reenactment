@@ -118,21 +118,19 @@ def train(arg):
 
             sum_loss += loss.item()
 
-            # show_img(tensor_to_image(input_images[0]))
-            #
-            # heatmap_sum = np.uint8(get_heatmap_gray(heatmaps[0].unsqueeze(0), denorm=True).detach().squeeze().cpu().numpy())
-            # gt_coords_xy = gt_coords_xy[0]
-            # # for i in range(0, 2*kp_num[arg.dataset], 2):
-            # #     draw_circle(heatmap_sum, (int(gt_coords_xy[i]), int(gt_coords_xy[i+1])))
-            # show_img(cv2.resize(heatmap_sum, (256, 256)))
-            #
-            # heatmap_sum = np.uint8(get_heatmap_gray(heatmaps[0].unsqueeze(0), denorm=True).detach().squeeze().cpu().numpy())
-            # coords_predict = coords_predict.detach().cpu().squeeze().numpy()
-            #
-            # for i in range(0, 2 * kp_num[arg.dataset], 2):
-            #     draw_circle(heatmap_sum, (int(coords_predict[i]), int(coords_predict[i + 1])))
-            #
-            # show_img(cv2.resize(heatmap_sum, (256, 256)))
+            show_img(tensor_to_image(input_images[0]))
+
+            heatmap_sum = np.uint8(get_heatmap_gray(heatmaps[0].unsqueeze(0), denorm=True).detach().squeeze().cpu().numpy())
+            gt_coords_xy = gt_coords_xy[0].detach().cpu().squeeze().numpy()
+            for i in range(0, 2*kp_num[arg.dataset], 2):
+                draw_circle(heatmap_sum, (int(gt_coords_xy[i]), int(gt_coords_xy[i+1])))
+            show_img(cv2.resize(heatmap_sum, (256, 256)))
+
+            heatmap_sum = np.uint8(get_heatmap_gray(heatmaps[0].unsqueeze(0), denorm=True).detach().squeeze().cpu().numpy())
+            coords_predict = coords_predict.detach().cpu().squeeze().numpy()
+            for i in range(0, 2 * kp_num[arg.dataset], 2):
+                draw_circle(heatmap_sum, (int(coords_predict[i]), int(coords_predict[i + 1])))
+            show_img(cv2.resize(heatmap_sum, (256, 256)))
 
 
         mean_sum_loss = sum_loss / forward_times_per_epoch

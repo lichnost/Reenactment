@@ -8,6 +8,7 @@ import torch_optimizer as optim
 from torch.optim import lr_scheduler
 from kornia.geometry.transform import warp_affine
 from torch.nn import init
+import math
 
 def get_devices_list(arg):
     devices_list = [torch.device('cpu')]
@@ -259,11 +260,9 @@ def create_model_align(arg, devices_list, eval=False):
 
 
 def create_model_edge(arg, devices_list, eval=False):
-    from kornia.filters import Laplacian, Sobel
+    from models import Edge
 
-    # edge = Laplacian(3)
-    edge = Sobel()
-
+    edge = Edge()
     if arg.cuda:
         edge = edge.cuda(device=devices_list[0])
 
@@ -301,19 +300,19 @@ def calc_d_fake(dataset, pred_coords, gt_coords, bcsize, bcsize_set, delta, thet
     return dfake
 
 def eye_centers(coords, dataset):
-    if l_eye_center_index_x[dataset].__class__ != list:
-        left_center = [coords[l_eye_center_index_x[dataset]], coords[l_eye_center_index_y[dataset]]]
-        right_center = [coords[r_eye_center_index_x[dataset]], coords[r_eye_center_index_y[dataset]]]
+    if left_eye_center_index_x[dataset].__class__ != list:
+        left_center = [coords[left_eye_center_index_x[dataset]], coords[left_eye_center_index_y[dataset]]]
+        right_center = [coords[right_eye_center_index_x[dataset]], coords[right_eye_center_index_y[dataset]]]
 
         return left_center, right_center
     else:
-        length = len(l_eye_center_index_x[dataset])
+        length = len(left_eye_center_index_x[dataset])
         l_eye_x_avg, l_eye_y_avg, r_eye_x_avg, r_eye_y_avg = 0., 0., 0., 0.
         for i in range(length):
-            l_eye_x_avg += coords[l_eye_center_index_x[dataset][i]]
-            l_eye_y_avg += coords[l_eye_center_index_y[dataset][i]]
-            r_eye_x_avg += coords[r_eye_center_index_x[dataset][i]]
-            r_eye_y_avg += coords[r_eye_center_index_y[dataset][i]]
+            l_eye_x_avg += coords[left_eye_center_index_x[dataset][i]]
+            l_eye_y_avg += coords[left_eye_center_index_y[dataset][i]]
+            r_eye_x_avg += coords[right_eye_center_index_x[dataset][i]]
+            r_eye_y_avg += coords[right_eye_center_index_y[dataset][i]]
         l_eye_x_avg /= length
         l_eye_y_avg /= length
         r_eye_x_avg /= length
@@ -329,10 +328,10 @@ def eye_centers(coords, dataset):
 def calc_normalize_factor(dataset, gt_coords_xy, normalize_way='inter_pupil'):
     if normalize_way == 'inter_ocular':
         error_normalize_factor = np.sqrt(
-            (gt_coords_xy[0][lo_eye_corner_index_x[dataset]] - gt_coords_xy[0][ro_eye_corner_index_x[dataset]]) *
-            (gt_coords_xy[0][lo_eye_corner_index_x[dataset]] - gt_coords_xy[0][ro_eye_corner_index_x[dataset]]) +
-            (gt_coords_xy[0][lo_eye_corner_index_y[dataset]] - gt_coords_xy[0][ro_eye_corner_index_y[dataset]]) *
-            (gt_coords_xy[0][lo_eye_corner_index_y[dataset]] - gt_coords_xy[0][ro_eye_corner_index_y[dataset]]))
+            (gt_coords_xy[0][left_eye_left_corner_index_x[dataset]] - gt_coords_xy[0][right_eye_right_corner_index_x[dataset]]) *
+            (gt_coords_xy[0][left_eye_left_corner_index_x[dataset]] - gt_coords_xy[0][right_eye_right_corner_index_x[dataset]]) +
+            (gt_coords_xy[0][left_eye_left_corner_index_y[dataset]] - gt_coords_xy[0][right_eye_right_corner_index_y[dataset]]) *
+            (gt_coords_xy[0][left_eye_left_corner_index_y[dataset]] - gt_coords_xy[0][right_eye_right_corner_index_y[dataset]]))
         return error_normalize_factor
     elif normalize_way == 'inter_pupil':
         left_center, right_center = eye_centers(gt_coords_xy, dataset)
@@ -385,8 +384,10 @@ def calc_heatmap_loss_gp(criterion_gp, heatmaps_pred, heatmaps_target):
     return loss
 
 
-def get_heatmap_gray(heatmaps, denorm=False, denorm_base=255):
+def get_heatmap_gray(heatmaps, denorm=False, denorm_base=255, cutoff=False):
     result = torch.sum(heatmaps, dim=1)
+    if cutoff:
+        result[result > 1] = 1
     if denorm:
         result = result - torch.min(result)
         result = result * (denorm_base / torch.max(result))
@@ -402,7 +403,15 @@ def create_optimizer(arg, parameters, create_scheduler=False):
         optimizer = optim.Lamb(
             parameters,
             lr=arg.lr,
-            weight_decay=arg.weight_decay
+            weight_decay=arg.weight_decay,
+            betas=(0.5, 0.999)
+        )
+    elif arg.optimizer == 'Yogi':
+        optimizer = optim.Yogi(
+            parameters,
+            lr=arg.lr,
+            weight_decay=arg.weight_decay,
+            betas=(0.5, 0.999)
         )
     elif arg.optimizer == 'Adam':
         optimizer = torch.optim.Adam(
@@ -413,7 +422,7 @@ def create_optimizer(arg, parameters, create_scheduler=False):
         )
     else:
         optimizer = torch.optim.SGD(
-            decoder.parameters(),
+            parameters,
             lr=arg.lr,
             momentum=arg.momentum,
             weight_decay=arg.weight_decay
@@ -523,3 +532,107 @@ def init_weights(net, init_type='normal'):
         net.apply(weights_init_transformer)
     else:
         raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
+
+
+
+def face_orientation(size, landmarks, model):
+    """
+    Face orientation detection.
+    :param size: (width, height)
+    :param landmarks: array of coordinates as tuples
+        [(Nose tip x, Nose tip y),
+         (Chin x, Chin y),
+         (Left eye left corner x, Left eye left corner y),
+         (Right eye right corner x, Right eye right corner y),
+         (Left Mouth corner x, Left Mouth corner y),
+         (Right mouth corner x, Right mouth corner y)]
+    :param model: array of coordinates as tuples
+        [(Nose tip x, Nose tip y),
+         (Chin x, Chin y),
+         (Left eye left corner x, Left eye left corner y),
+         (Right eye right corner x, Right eye right corner y),
+         (Left Mouth corner x, Left Mouth corner y),
+         (Right mouth corner x, Right mouth corner y)]
+    :return:
+    """
+
+    image_points = np.array(landmarks, dtype="double")
+    model = np.array(model, dtype="double")
+
+    generic = np.array([
+        [0.0, 0.0, 0.0],  # Nose tip
+        [0.0, -330.0, -65.0],  # Chin
+        [-170.0, 170.0, -135.0],  # Left eye left corner
+        [170.0, 170.0, -135.0],  # Right eye right corner
+        [-145.0, -150.0, -125.0],  # Left Mouth corner
+        [145.0, -150.0, -125.0]  # Right mouth corner
+    ])
+
+    # norm_model = np.linalg.norm(model[5] - model[4])
+    # norm_generic = np.linalg.norm(generic[5, :1] - generic[4, :1])
+    # model_scale = norm_model / norm_generic
+    # generic *= model_scale
+
+    # generic[:, :2] = model[:, :]
+    model_points = generic
+
+    # Camera internals
+
+    center = (size[0] / 2, size[1] / 2)
+    focal_length = center[0] / np.tan(60 / 2 * np.pi / 180)
+    camera_matrix = np.array(
+        [[focal_length, 0, center[0]],
+         [0, focal_length, center[1]],
+         [0, 0, 1]], dtype="double"
+    )
+
+    dist_coeffs = np.zeros((4, 1))  # Assuming no lens distortion
+    (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix,
+                                                                  dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+
+    axis = np.float32([[500, 0, 0],
+                       [0, 500, 0],
+                       [0, 0, 500]])
+
+    imgpts, jac = cv2.projectPoints(axis, rotation_vector, translation_vector, camera_matrix, dist_coeffs)
+    modelpts, jac2 = cv2.projectPoints(model_points, rotation_vector, translation_vector, camera_matrix, dist_coeffs)
+    rvec_matrix = cv2.Rodrigues(rotation_vector)[0]
+
+    proj_matrix = np.hstack((rvec_matrix, translation_vector))
+    eulerAngles = cv2.decomposeProjectionMatrix(proj_matrix)[6]
+
+    pitch, yaw, roll = [math.radians(_) for _ in eulerAngles]
+
+    pitch = math.degrees(math.asin(math.sin(pitch)))
+    roll = -math.degrees(math.asin(math.sin(roll)))
+    yaw = math.degrees(math.asin(math.sin(yaw)))
+
+    return np.array(imgpts).reshape([3, 2]), np.array(modelpts).reshape([6, 2]), (str(int(roll)), str(int(pitch)), str(int(yaw))), landmarks[0]
+
+
+def orientation_landmarks(dataset, shape):
+    nose = [shape[nose_tip_x[dataset]], shape[nose_tip_y[dataset]]]
+    chin = [shape[chin_bottom_x[dataset]], shape[chin_bottom_y[dataset]]]
+    left_eye_left = [shape[left_eye_left_corner_index_x[dataset]], shape[left_eye_left_corner_index_y[dataset]]]
+    right_eye_right = [shape[right_eye_right_corner_index_x[dataset]], shape[right_eye_right_corner_index_y[dataset]]]
+
+    if left_mouth_x[dataset].__class__ != list:
+        left_mouth = [shape[left_mouth_x[dataset]], shape[left_mouth_y[dataset]]]
+        right_mouth = [shape[right_mouth_x[dataset]], shape[right_mouth_y[dataset]]]
+    else:
+        length = len(left_mouth_x[dataset])
+        left_mouth_x_avg, left_mouth_y_avg, right_mouth_x_avg, right_mouth_y_avg = 0., 0., 0., 0.
+        for i in range(length):
+            left_mouth_x_avg += shape[left_mouth_x[dataset][i]]
+            left_mouth_y_avg += shape[left_mouth_y[dataset][i]]
+            right_mouth_x_avg += shape[right_mouth_x[dataset][i]]
+            right_mouth_y_avg += shape[right_mouth_y[dataset][i]]
+        left_mouth_x_avg /= length
+        left_mouth_y_avg /= length
+        right_mouth_x_avg /= length
+        right_mouth_y_avg /= length
+
+        left_mouth = [left_mouth_x_avg, left_mouth_y_avg]
+        right_mouth = [right_mouth_x_avg, right_mouth_y_avg]
+
+    return [nose, chin, left_eye_left, right_eye_right, left_mouth, right_mouth]

@@ -184,5 +184,17 @@ def eval_CED(auc_record):
     plt.show()
 
 
-def draw_circle(img, xy):
-    return cv2.circle(img, xy, 2, (0, 0, 0), -1)
+def draw_circle(img, xy, color=(0, 0, 255)):
+    return cv2.circle(img, xy, 2, color, -1)
+
+
+def draw_text(img, text, xy, color=(0, 0, 255), scale=1):
+    return cv2.putText(img, text, xy, fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=scale, color=color)
+
+
+def draw_orientation(img, orientation):
+    nose = (int(orientation[3][0]), int(orientation[3][1]))
+    points = orientation[0].astype(int)
+    cv2.line(img, nose, tuple(points[1].ravel().astype(int)), (0,255,0), 3) #GREEN
+    cv2.line(img, nose, tuple(points[0].ravel().astype(int)), (255,0,), 3) #BLUE
+    cv2.line(img, nose, tuple(points[2].ravel().astype(int)), (0,0,255), 3) #RED

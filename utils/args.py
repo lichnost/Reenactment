@@ -36,22 +36,23 @@ parser.add_argument('--workers',            default=8,                   type=in
 parser.add_argument('--shuffle',            default=True,                type=str2bool)
 parser.add_argument('--PDB',                default=False,                type=str2bool) # not gt_heatmaps False, gt_heatmaps True
 parser.add_argument('--RGB',                default=False,                type=str2bool)
-parser.add_argument('--trans_ratio',        default=0.0,                 type=float)
-parser.add_argument('--rotate_limit',       default=0.,                 type=float)
-parser.add_argument('--scale_ratio',        default=0.2,                 type=float)
-parser.add_argument('--scale_vertical',     default=0.01,                 type=float)
-parser.add_argument('--scale_horizontal',   default=0.01,                 type=float)
+parser.add_argument('--trans_ratio',        default=0.2,                 type=float) # boundary=0.2
+parser.add_argument('--rotate_limit',       default=45.,                 type=float) # boundary=45.
+parser.add_argument('--scale_ratio_up',     default=0.1,                 type=float) # boundary=0.2
+parser.add_argument('--scale_ratio_down',   default=0.2,                 type=float) # boundary=0.4
+parser.add_argument('--scale_vertical',     default=0.2,                 type=float) # boundary=0.2
+parser.add_argument('--scale_horizontal',   default=0.2,                 type=float) # boundary=0.2
 
 # devices
 parser.add_argument('--cuda',               default=True,                type=str2bool)
 parser.add_argument('--gpu_id',             default='0',                 type=str)
 
 # learning parameters
-parser.add_argument('--optimizer',          default='Adam',          type=str,
-                    choices=['Lamb', 'SGD', 'Adam'])
+parser.add_argument('--optimizer',          default='Yogi',          type=str,
+                    choices=['Lamb', 'SGD', 'Adam', 'Yogi'])
 parser.add_argument('--momentum',           default=0.1,                 type=float)
-parser.add_argument('--weight_decay',       default=0,                type=float)
-parser.add_argument('--lr',                 default=2e-2,                type=float) # decoder=2e-2
+parser.add_argument('--weight_decay',       default=0,                type=float) # decoder=0
+parser.add_argument('--lr',                 default=1e-4,                type=float) # decoder=2e-2
 parser.add_argument('--gamma',              default=0.2,                 type=float)
 parser.add_argument('--step_values',        default=[],        type=list)
 parser.add_argument('--max_epoch',          default=1500,                type=int)
@@ -61,9 +62,9 @@ parser.add_argument('--boundary_cutoff_lambda',          default=0.4,           
 
 # losses setting
 parser.add_argument('--loss_type',          default='L1',          type=str,
-                    choices=['L1', 'L2', 'smoothL1', 'wingloss', 'adaptiveWingloss']) # boundary=wingloss
-parser.add_argument('--gp_loss',     default=False,                type=str2bool)
-parser.add_argument('--loss_gp_lambda',     default=100.,                 type=float) # decoder=10.
+                    choices=['L1', 'L2', 'smoothL1', 'wingloss', 'adaptiveWingloss']) # boundary=wingloss, transformer=L1
+parser.add_argument('--gp_loss',     default=True,                type=str2bool)
+parser.add_argument('--loss_gp_lambda',     default=1.,                 type=float) # decoder=10. transformer=5.
 parser.add_argument('--cp_loss',     default=False,                type=str2bool)
 parser.add_argument('--loss_cp_lambda',     default=0.01,                 type=float) # decoder=0.01
 parser.add_argument('--wingloss_omega',         default=10,                  type=float)
@@ -77,9 +78,9 @@ parser.add_argument('--feature_loss_type',          default='relu2_2_and_relu3_3
                     choices=['relu1_2', 'relu2_2', 'relu3_3', 'relu4_3', 'relu1_2_and_relu2_2', 'relu2_2_and_relu3_3', 'relu3_3_and_relu4_3'])
 parser.add_argument('--loss_feature_lambda',     default=10.,                type=float)
 parser.add_argument('--loss_pixel_lambda',     default=100.,                type=float)
-parser.add_argument('--loss_discrim_lambda',     default=1.0,                type=float)
-parser.add_argument('--loss_cycle_lambda',     default=50.0,                type=float)
-parser.add_argument('--loss_pca_lambda',     default=10.,                type=float)
+parser.add_argument('--loss_discrim_lambda',     default=5.0,                type=float) # transformer=1.0
+# parser.add_argument('--loss_cycle_lambda',     default=1.0,                type=float) # transformer=10.0
+parser.add_argument('--loss_pca_lambda',     default=10.,                type=float) # transformer=10.0
 
 # pca
 parser.add_argument('--pca_components',          default=20,                type=int)
@@ -117,7 +118,7 @@ parser.add_argument('--eval_epoch_boundary_discriminator',     default=960,     
 parser.add_argument('--eval_epoch_decoder',          default=85,                 type=int)
 parser.add_argument('--eval_epoch_decoder_discriminator',     default=85,                 type=int)
 parser.add_argument('--eval_epoch_pca',          default=150000,                 type=int)
-parser.add_argument('--eval_epoch_align',          default=300,                 type=int)
+parser.add_argument('--eval_epoch_align',          default=350,                 type=int)
 parser.add_argument('--max_threshold',      default=0.1,                 type=float)
 parser.add_argument('--norm_way',           default='inter_ocular',      type=str,
                     choices=['inter_pupil', 'inter_ocular', 'face_size'])

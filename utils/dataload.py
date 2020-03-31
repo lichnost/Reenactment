@@ -59,7 +59,7 @@ def convert_img_to_gray(img):
         raise Exception("img shape wrong!\n")
 
 
-def get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical, flip=True, gaussian=True):
+def get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_ratio_up, scale_ratio_down, scale_horizontal, scale_vertical, flip=False, gaussian=True):
     translation = 0
     trans_dir = 0
     rotation = 0
@@ -74,9 +74,11 @@ def get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_rati
         translation = random.randint(-translate_param, translate_param)
         trans_dir = random.randint(0, 3)  # LU:0 RU:1 LL:2 RL:3
         rotation = random.uniform(-rotate_limit, rotate_limit)
-        scaling = random.uniform(1-scale_ratio, 1+scale_ratio)
-        scaling_horizontal = random.uniform(-scale_horizontal, scale_horizontal)
-        scaling_vertical = random.uniform(-scale_vertical, scale_vertical)
+        scaling = random.uniform(1-scale_ratio_down, 1+scale_ratio_up)
+        if random.randint(0, 1) == 0:
+            scaling_horizontal = random.uniform(scale_horizontal, scale_horizontal)
+        else:
+            scaling_vertical = random.uniform(scale_vertical, scale_vertical)
         flip_num = random.randint(0, 1) if flip else 0
         gaussian_blur = random.randint(0, 1) if gaussian else 0
     return translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip_num, gaussian_blur
@@ -236,14 +238,21 @@ def get_mean_std_gray(dataset, split):
     return  np.array(mean),  np.array(std)
 
 
-def get_item_from(dataset_route, dataset, split, type, annotation, crop_size, RGB, sigma, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical):
+def get_item_from(dataset_route, dataset, split, type, annotation, crop_size, RGB, sigma, trans_ratio, rotate_limit,
+                  scale_ratio_up, scale_ration_down, scale_horizontal, scale_vertical):
     pic_orig = cv2.imread(dataset_route[dataset] + annotation[-1])
     coord_x = list(map(float, annotation[:2*kp_num[dataset]:2]))
     coord_y = list(map(float, annotation[1:2*kp_num[dataset]:2]))
     coord_xy = np.array(np.float32(annotation[:2*kp_num[dataset]]))
     bbox = np.array(list(map(int, annotation[-7:-3])))
 
-    translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical)
+    translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur =\
+        get_random_transform_param(type, bbox, trans_ratio, rotate_limit, scale_ratio_up, scale_ration_down, scale_horizontal, scale_vertical)
+
+    horizontal_add = (bbox[2] - bbox[0]) * (1 - scaling)
+    vertical_add = (bbox[3] - bbox[1]) * (1 - scaling)
+    bbox = np.float32(
+        [bbox[0] - horizontal_add, bbox[1] - vertical_add, bbox[2] + horizontal_add, bbox[3] + vertical_add])
 
     horizontal_add = (bbox[2] - bbox[0]) * scaling_horizontal
     vertical_add = (bbox[3] - bbox[1]) * scaling_vertical

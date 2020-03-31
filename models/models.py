@@ -3,8 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .losses import HeatmapLoss, GPLoss
-from utils.train_eval_utils import get_heatmap_gray
-
+from utils.train_eval_utils import get_heatmap_gray, calc_heatmap_loss_gp
+from kornia.filters import Laplacian, Sobel
 
 class Bottleneck(nn.Module):
     expansion = 4
@@ -674,9 +674,9 @@ class NLayerDiscriminator(nn.Module):
 
 
 class DecoderTransformerDiscrim(nn.Module):
-    def __init__(self, in_channels=13+3):
+    def __init__(self, in_channels=13+3, ndf=64, n_layers=3):
         super(DecoderTransformerDiscrim, self).__init__()
-        self.discrim = NLayerDiscriminator(in_channels, 64, n_layers=3, use_sigmoid=True)
+        self.discrim = NLayerDiscriminator(in_channels, ndf, n_layers=n_layers, use_sigmoid=True)
 
     def forward(self, x):
         return self.discrim(x)
@@ -1047,7 +1047,20 @@ class Edge(nn.Module):
         layers.append(nn.Conv2d(1, 1, 3, padding = 1, bias=False))
         layers.append(nn.Conv2d(1, 1, 3, padding = 1, bias=False))
         self.edge = nn.Sequential(*layers)
-        self.edge.training = False
+
+    def forward(self, input):
+        return self.edge(input)
+
+class Edge(nn.Module):
+    def __init__(self):
+        super(Edge, self).__init__()
+        layers = []
+        # layers.append(nn.Conv2d(1, 1, 3, padding = 1, bias=False))
+        # layers.append(nn.Conv2d(1, 1, 3, padding = 1, bias=False))
+        layers.append(Sobel(normalized=True))
+        layers.append(Laplacian(3, normalized=True))
+        self.edge = nn.Sequential(*layers)
+
 
     def forward(self, input):
         return self.edge(input)

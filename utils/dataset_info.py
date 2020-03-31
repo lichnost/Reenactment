@@ -68,7 +68,8 @@ dataset_size = {
     'Faces': {
         'PavelSemenov':    5053,
         'Adush':           7089,
-        'DonaldTrump':     39800
+        'DonaldTrump':     39800,
+        'Kathleen':        39782
     }
 }
 
@@ -217,14 +218,31 @@ flip_relation = {
     ]
 }
 
-lo_eye_corner_index_x = {'300W': 72, 'AFLW': 20, 'COFW': 26, 'WFLW': 120, 'Faces': 120}
-lo_eye_corner_index_y = {'300W': 73, 'AFLW': 21, 'COFW': 27, 'WFLW': 121, 'Faces': 121}
-ro_eye_corner_index_x = {'300W': 90, 'AFLW': 30, 'COFW': 38, 'WFLW': 144, 'Faces': 144}
-ro_eye_corner_index_y = {'300W': 91, 'AFLW': 31, 'COFW': 39, 'WFLW': 145, '': 145}
-l_eye_center_index_x = {'300W': [72, 74, 76, 78, 80, 82], 'AFLW': 22, 'COFW': 54, 'WFLW': 192, 'Faces': 192}
-l_eye_center_index_y = {'300W': [73, 75, 77, 79, 81, 83], 'AFLW': 23, 'COFW': 55, 'WFLW': 193, 'Faces': 193}
-r_eye_center_index_x = {'300W': [84, 86, 88, 90, 92, 94], 'AFLW': 28, 'COFW': 56, 'WFLW': 194, 'Faces': 194}
-r_eye_center_index_y = {'300W': [85, 87, 89, 91, 93, 95], 'AFLW': 29, 'COFW': 57, 'WFLW': 195, 'Faces': 195}
+left_eye_left_corner_index_x = {'300W': 72, 'AFLW': 20, 'COFW': 26, 'WFLW': 120, 'Faces': 120}
+left_eye_left_corner_index_y = {'300W': 73, 'AFLW': 21, 'COFW': 27, 'WFLW': 121, 'Faces': 121}
+left_eye_right_corner_index_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 168, 'Faces': 168}
+left_eye_right_corner_index_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 169, 'Faces': 169}
+
+right_eye_right_corner_index_x = {'300W': 90, 'AFLW': 30, 'COFW': 38, 'WFLW': 144, 'Faces': 144}
+right_eye_right_corner_index_y = {'300W': 91, 'AFLW': 31, 'COFW': 39, 'WFLW': 145, 'Faces': 145}
+right_eye_left_corner_index_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 176, 'Faces': 176}
+right_eye_left_corner_index_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 177, 'Faces': 177}
+
+left_eye_center_index_x = {'300W': [72, 74, 76, 78, 80, 82], 'AFLW': 22, 'COFW': 54, 'WFLW': 192, 'Faces': 192}
+left_eye_center_index_y = {'300W': [73, 75, 77, 79, 81, 83], 'AFLW': 23, 'COFW': 55, 'WFLW': 193, 'Faces': 193}
+right_eye_center_index_x = {'300W': [84, 86, 88, 90, 92, 94], 'AFLW': 28, 'COFW': 56, 'WFLW': 194, 'Faces': 194}
+right_eye_center_index_y = {'300W': [85, 87, 89, 91, 93, 95], 'AFLW': 29, 'COFW': 57, 'WFLW': 195, 'Faces': 195}
+
+nose_tip_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 108, 'Faces': 108}
+nose_tip_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 109, 'Faces': 109}
+
+chin_bottom_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 32, 'Faces': 32}
+chin_bottom_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 33, 'Faces': 33}
+
+left_mouth_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [152, 176], 'Faces': [152, 176]}
+left_mouth_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [153, 177], 'Faces': [153, 177]}
+right_mouth_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [164, 184], 'Faces': [164, 184]}
+right_mouth_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [165, 185], 'Faces': [165, 185]}
 
 nparts = {  # [chin, brow, nose, eyes, mouth], totally 5 parts
     '300W': [
@@ -246,7 +264,8 @@ means_color = {
     'Faces': {
         'PavelSemenov': [127.9747, 121.5213, 116.7318],
         'Adush': [134.0603, 112.3645, 105.7585],
-        'DonaldTrump': [112.5789,  88.4065,  77.6387]
+        'DonaldTrump': [112.5789,  88.4065,  77.6387],
+        'Kathleen': [128.1358, 113.4770, 106.6879]
     }
 }
 
@@ -258,7 +277,8 @@ stds_color = {
     'Faces': {
         'PavelSemenov': [75.9127, 73.5458, 73.5602],
         'Adush': [48.5046, 53.2059, 54.5474],
-        'DonaldTrump': [64.8365, 45.0323, 42.1931]
+        'DonaldTrump': [64.8365, 45.0323, 42.1931],
+        'Kathleen': [60.6885, 59.7532, 61.7567]
     }
 }
 
@@ -269,7 +289,8 @@ means_gray = {
     'Faces': {
         'PavelSemenov': 122.9053,
         'Adush': 118.0988,
-        'DonaldTrump': 94.4065
+        'DonaldTrump': 94.4065,
+        'Kathleen': 117.0859
     }
 }
 
@@ -281,6 +302,7 @@ stds_gray = {
     'Faces': {
         'PavelSemenov': 73.9678,
         'Adush': 50.3819,
-        'DonaldTrump': 48.2041
+        'DonaldTrump': 48.2041,
+        'Kathleen': 59.8618
     }
 }

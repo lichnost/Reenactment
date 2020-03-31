@@ -111,7 +111,7 @@ class GeneralDataset(data.Dataset):
     def __getitem__(self, item):
         return get_item_from(self.arg.dataset_route, self.dataset, self.split, self.type, self.list[item], self.arg.crop_size,
                              self.arg.RGB, self.arg.sigma, self.arg.trans_ratio, self.arg.rotate_limit,
-                             self.arg.scale_ratio, self.arg.scale_horizontal, self.arg.scale_vertical)
+                             self.arg.scale_ratio_up, self.arg.scale_ratio_down, self.arg.scale_horizontal, self.arg.scale_vertical)
 
 
 class DecoderDataset(data.Dataset):
@@ -129,11 +129,12 @@ class DecoderDataset(data.Dataset):
         return len(self.list)
 
     def __getitem__(self, item):
-        dataset_route, dataset, split, type, annotation, crop_size, RGB, sigma, trans_ratio, rotate_limit, scale_ratio,\
-        scale_horizontal, scale_vertical = self.arg.dataset_route, self.dataset, self.split, self.type,\
-                                           self.list[item], self.arg.crop_size, self.arg.RGB, self.arg.sigma,\
-                                           self.arg.trans_ratio, self.arg.rotate_limit,self.arg.scale_ratio,\
-                                           self.arg.scale_horizontal, self.arg.scale_vertical
+        dataset_route, dataset, split, type, annotation, crop_size, RGB, sigma, trans_ratio, rotate_limit,\
+        scale_ratio_up, scale_ration_down, scale_horizontal, scale_vertical =\
+            self.arg.dataset_route, self.dataset, self.split, self.type,\
+            self.list[item], self.arg.crop_size, self.arg.RGB, self.arg.sigma,\
+            self.arg.trans_ratio, self.arg.rotate_limit, self.arg.scale_ratio_up, self.arg.scale_ratio_down,\
+            self.arg.scale_horizontal, self.arg.scale_vertical
 
 
         pic_orig = cv2.imread(dataset_route[dataset] + annotation[-1])
@@ -142,7 +143,7 @@ class DecoderDataset(data.Dataset):
         bbox = np.array(list(map(int, annotation[-7:-3])))
 
         translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(
-            type, bbox, trans_ratio, rotate_limit, scale_ratio, scale_horizontal, scale_vertical, flip=False, gaussian=False)
+            type, bbox, trans_ratio, rotate_limit, scale_ratio_up, scale_ratio_down, scale_horizontal, scale_vertical, flip=False, gaussian=False)
 
         horizontal_add = (bbox[2] - bbox[0]) * scaling_horizontal
         vertical_add = (bbox[3] - bbox[1]) * scaling_vertical

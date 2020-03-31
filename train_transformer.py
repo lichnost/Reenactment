@@ -15,7 +15,7 @@ import json
 def train(arg):
     log_writer = None
     if arg.save_logs:
-        log_path = './logs/transformer_' + arg.dataset + '_' + arg.split
+        log_path = './logs/transformer_' + arg.dataset + '_' + arg.split_source + '2' + arg.split
         if not os.path.exists(log_path):
             os.makedirs(log_path)
         log_writer = SummaryWriter(log_dir=log_path)
@@ -73,12 +73,14 @@ def train(arg):
     #     return torch.cat(tmp, 1)
 
     generator_a2b = create_model_transformer_a2b(arg, devices, eval=False)
+    # print_network(generator_a2b)
     generator_a2b.train()
     generator_b2a = create_model_transformer_b2a(arg, devices, eval=False)
     generator_b2a.train()
 
     if arg.GAN:
         discrim_a = create_model_transformer_discrim_a(arg, devices, eval=False)
+        # print_network(discrim_a)
         discrim_a.train()
         discrim_b = create_model_transformer_discrim_b(arg, devices, eval=False)
         discrim_b.train()
@@ -90,8 +92,8 @@ def train(arg):
     if arg.GAN:
         lr_restore = arg.lr
         weight_decay_restore = arg.weight_decay
-        arg.lr *= 0.5
-        arg.weight_decay = 0.1
+        arg.lr = 1e-7
+        arg.weight_decay = 0.9
         optimizer_discrim, scheduler_discrim = create_optimizer(arg, list(discrim_a.parameters()) + list(discrim_b.parameters()))
         arg.lr = lr_restore
         arg.weight_decay = weight_decay_restore
@@ -109,22 +111,22 @@ def train(arg):
     if arg.GAN:
         criterion_gan = nn.MSELoss()
         discrim_false = torch.zeros((arg.batch_size, 1, 6, 6))
+        discrim_true_train = torch.ones((arg.batch_size, 1, 6, 6)).fill_(0.85)
         discrim_true = torch.ones((arg.batch_size, 1, 6, 6))
         if arg.cuda:
             criterion_gan = criterion_gan.cuda(device=devices[0])
 
             discrim_false = discrim_false.cuda(device=devices[0])
+            discrim_true_train = discrim_true_train.cuda(device=devices[0])
             discrim_true = discrim_true.cuda(device=devices[0])
 
-    criterion_pixel = nn.L1Loss()
-    if arg.cuda:
-        criterion_pixel = criterion_pixel.cuda(device=devices[0])
+    # criterion_pixel = nn.L1Loss()
+    # if arg.cuda:
+    #     criterion_pixel = criterion_pixel.cuda(device=devices[0])
 
-    criterion_gp = None
-    if arg.gp_loss:
-        criterion_gp = GPLoss()
-        if arg.cuda:
-            criterion_gp = criterion_gp.cuda(device=devices[0])
+    criterion_gp = GPLoss()
+    if arg.cuda:
+        criterion_gp = criterion_gp.cuda(device=devices[0])
 
     criterion_pca = nn.L1Loss()
     if arg.cuda:
@@ -179,35 +181,52 @@ def train(arg):
                 # coords_b = coords_b.cuda(device=devices[0])
 
             estimator.zero_grad()
+            edge.zero_grad()
+
             with torch.no_grad():
                 heatmaps_a = estimator(input_images_a)[-1]
                 heatmaps_b = estimator(input_images_b)[-1]
                 # heatmaps_a[heatmaps_a < arg.boundary_cutoff_lambda * heatmaps_a.max()] = 0
                 # heatmaps_b[heatmaps_b < arg.boundary_cutoff_lambda * heatmaps_b.max()] = 0
 
-            with torch.no_grad():
-                gen_ab = generator_a2b(heatmaps_a)
-                gen_ba = generator_b2a(heatmaps_b)
-
             if arg.GAN:
                 # discriminator optimize
+                discrim_a.train()
+                discrim_b.train()
+                generator_a2b.eval()
+                generator_b2a.eval()
+
                 discrim_a.zero_grad()
                 discrim_b.zero_grad()
                 optimizer_discrim.zero_grad()
 
-                loss_discrim_a_true = criterion_gan(discrim_a(edge(heatmaps_a)), discrim_true[:input_batch_size, ...])
+
+                with torch.no_grad():
+                    gen_ab = generator_a2b(heatmaps_a)
+                    gen_ba = generator_b2a(heatmaps_b)
+                    # gen_aba = generator_b2a(gen_ab)
+                    # gen_bab = generator_a2b(gen_ba)
+
+                loss_discrim_a_true = criterion_gan(discrim_a(edge(heatmaps_a)), discrim_true_train[:input_batch_size, ...])
                 loss_discrim_a_false = criterion_gan(discrim_a(edge(gen_ba)), discrim_false[:input_batch_size, ...])
                 loss_discrim_a = loss_discrim_a_true + loss_discrim_a_false
                 log('loss_discrim_a_true', loss_discrim_a_true.item(), global_step)
                 log('loss_discrim_a_false', loss_discrim_a_false.item(), global_step)
 
-                loss_discrim_b_true = criterion_gan(discrim_b(edge(heatmaps_b)), discrim_true[:input_batch_size, ...])
+                loss_discrim_b_true = criterion_gan(discrim_b(edge(heatmaps_b)), discrim_true_train[:input_batch_size, ...])
                 loss_discrim_b_false = criterion_gan(discrim_b(edge(gen_ab)), discrim_false[:input_batch_size, ...])
                 loss_discrim_b = loss_discrim_b_true + loss_discrim_b_false
                 log('loss_discrim_b_true', loss_discrim_b_true.item(), global_step)
                 log('loss_discrim_b_false', loss_discrim_b_false.item(), global_step)
 
-                loss_discrim = loss_discrim_a + loss_discrim_b
+                # loss_discrim_cycle_a = criterion_gan(discrim_a(edge(gen_aba)), discrim_false[:input_batch_size, ...])
+                # loss_discrim_cycle_b = criterion_gan(discrim_b(edge(gen_bab)), discrim_false[:input_batch_size, ...])
+                # loss_discrim_cycle = loss_discrim_cycle_a + loss_discrim_cycle_b
+                # log('loss_discrim_cycle_a', loss_discrim_cycle_a.item(), global_step)
+                # log('loss_discrim_cycle_b', loss_discrim_cycle_b.item(), global_step)
+                # log('loss_discrim_cycle', loss_discrim_cycle.item(), global_step)
+
+                loss_discrim = loss_discrim_a + loss_discrim_b # + loss_discrim_cycle
                 log('loss_discrim_a', loss_discrim_a.item(), global_step)
                 log('loss_discrim_b', loss_discrim_b.item(), global_step)
                 log('loss_discrim', loss_discrim.item(), global_step)
@@ -215,6 +234,8 @@ def train(arg):
                 optimizer_discrim.step()
 
             # generator optimize
+            generator_a2b.train()
+            generator_b2a.train()
             pca.zero_grad()
             align.zero_grad()
             generator_a2b.zero_grad()
@@ -226,31 +247,36 @@ def train(arg):
             gen_aba = generator_b2a(gen_ab)
             gen_bab = generator_a2b(gen_ba)
 
+            edge_ab = edge(gen_ab)
+            edge_ba = edge(gen_ba)
+
             if arg.GAN:
-                loss_gan_ab = criterion_gan(discrim_b(edge(gen_ab)), discrim_true[:input_batch_size, ...])
-                loss_gan_ba  = criterion_gan(discrim_a(edge(gen_ba)), discrim_true[:input_batch_size, ...])
+                discrim_a.eval()
+                discrim_b.eval()
+
+                loss_gan_ab = criterion_gan(discrim_b(edge_ab), discrim_true[:input_batch_size, ...])
+                loss_gan_ba  = criterion_gan(discrim_a(edge_ba), discrim_true[:input_batch_size, ...])
                 loss_gan = loss_gan_ab + loss_gan_ba
                 log('loss_gan_ab', loss_gan_ab.item(), global_step)
                 log('loss_gan_ba', loss_gan_ba.item(), global_step)
                 log('loss_gan', loss_gan.item(), global_step)
 
-            loss_cycle_aba = criterion_pixel(gen_aba, heatmaps_a)
-            loss_cycle_bab = criterion_pixel(gen_bab, heatmaps_b)
-            loss_cycle = loss_cycle_aba + loss_cycle_bab
-            log('loss_cycle_aba', loss_cycle_aba.item(), global_step)
-            log('loss_cycle_bab', loss_cycle_bab.item(), global_step)
-            log('loss_cycle', loss_cycle.item(), global_step)
+            # loss_cycle_aba = criterion_pixel(gen_aba, heatmaps_a)
+            # loss_cycle_bab = criterion_pixel(gen_bab, heatmaps_b)
+            # loss_cycle = loss_cycle_aba + loss_cycle_bab
+            # log('loss_cycle_aba', loss_cycle_aba.item(), global_step)
+            # log('loss_cycle_bab', loss_cycle_bab.item(), global_step)
+            # log('loss_cycle', loss_cycle.item(), global_step)
 
-            if criterion_gp is not None:
-                loss_gp_aba = calc_heatmap_loss_gp(criterion_gp, gen_aba, heatmaps_a)
-                loss_gp_bab = calc_heatmap_loss_gp(criterion_gp, gen_bab, heatmaps_b)
-                loss_gp = loss_gp_aba + loss_gp_bab
-                log('loss_gp', loss_gp.item(), global_step)
+            loss_gp_aba = calc_heatmap_loss_gp(criterion_gp, gen_aba, heatmaps_a)
+            loss_gp_bab = calc_heatmap_loss_gp(criterion_gp, gen_bab, heatmaps_b)
+            loss_gp = loss_gp_aba + loss_gp_bab
+            log('loss_gp', loss_gp.item(), global_step)
 
-            pca_gen_ab = pca(align(gen_ab))
-            pca_gen_ba = pca(align(gen_ba))
-            pca_coords_a = pca(align(heatmaps_a)).detach()
-            pca_coords_b = pca(align(heatmaps_b)).detach()
+            pca_gen_ab = pca(align(edge_ab))
+            pca_gen_ba = pca(align(edge_ba))
+            pca_coords_a = pca(align(edge(heatmaps_a))).detach()
+            pca_coords_b = pca(align(edge(heatmaps_b))).detach()
 
             loss_pca_ab = criterion_pca(pca_gen_ab[:, :arg.pca_used_components], pca_coords_a[:, :arg.pca_used_components])
             loss_pca_ba = criterion_pca(pca_gen_ba[:, :arg.pca_used_components], pca_coords_b[:, :arg.pca_used_components])
@@ -259,12 +285,9 @@ def train(arg):
             log('loss_pca_ba', loss_pca_ba.item(), global_step)
             log('loss_pca', loss_pca.item(), global_step)
 
-            loss_gen = arg.loss_cycle_lambda * loss_cycle + arg.loss_pca_lambda * loss_pca
+            loss_gen =  arg.loss_gp_lambda * loss_gp + arg.loss_pca_lambda * loss_pca
             if arg.GAN:
                 loss_gen = loss_gen + arg.loss_discrim_lambda * loss_gan
-
-            if criterion_gp is not None:
-                loss_gen = loss_gen + arg.loss_gp_lambda * loss_gp
 
             log('loss_gen', loss_gen.item(), global_step)
             loss_gen.backward()
@@ -275,24 +298,30 @@ def train(arg):
 
             sum_loss_gen += loss_gen.item()
 
-            if arg.save_logs:
-                heatmaps_a_to_save = get_heatmap_gray(heatmaps_a[0].unsqueeze(0), denorm=True).detach().cpu()
-                heatmaps_b_to_save = get_heatmap_gray(heatmaps_b[0].unsqueeze(0), denorm=True).detach().cpu()
-                heatmaps_a_edge_to_save = get_heatmap_gray(edge(heatmaps_a[0].unsqueeze(0)), denorm=True).detach().cpu()
-                heatmaps_b_edge_to_save = get_heatmap_gray(edge(heatmaps_b[0].unsqueeze(0)), denorm=True).detach().cpu()
-                gen_ab_to_save = get_heatmap_gray(gen_ab[0].unsqueeze(0), denorm=True).detach().cpu()
-                gen_ba_to_save = get_heatmap_gray(gen_ba[0].unsqueeze(0), denorm=True).detach().cpu()
-                gen_aba_to_save = get_heatmap_gray(gen_aba[0].unsqueeze(0), denorm=True).detach().cpu()
-                gen_bab_to_save = get_heatmap_gray(gen_bab[0].unsqueeze(0), denorm=True).detach().cpu()
-                heatmaps_to_save = make_grid(torch.stack([heatmaps_a_to_save,
+            if arg.save_logs and arg.save_img:
+                heatmaps_a_to_save = get_heatmap_gray(heatmaps_a[0].unsqueeze(0), cutoff=True).detach().cpu()
+                heatmaps_b_to_save = get_heatmap_gray(heatmaps_b[0].unsqueeze(0), cutoff=True).detach().cpu()
+                heatmaps_a_edge_to_save = get_heatmap_gray(edge(heatmaps_a[0].unsqueeze(0)), cutoff=True).detach().cpu()
+                heatmaps_b_edge_to_save = get_heatmap_gray(edge(heatmaps_b[0].unsqueeze(0)), cutoff=True).detach().cpu()
+                gen_ab_to_save = get_heatmap_gray(gen_ab[0].unsqueeze(0)).detach().cpu()
+                gen_ba_to_save = get_heatmap_gray(gen_ba[0].unsqueeze(0)).detach().cpu()
+                gen_aba_to_save = get_heatmap_gray(gen_aba[0].unsqueeze(0)).detach().cpu()
+                gen_bab_to_save = get_heatmap_gray(gen_bab[0].unsqueeze(0)).detach().cpu()
+
+                heatmaps_input_to_save = make_grid(torch.stack([heatmaps_a_to_save,
                                        heatmaps_b_to_save,
                                        heatmaps_a_edge_to_save,
-                                       heatmaps_b_edge_to_save,
-                                       gen_ab_to_save,
-                                       gen_ba_to_save,
-                                       gen_aba_to_save,
-                                       gen_bab_to_save]), pad_value=255)
-                log_img('heatmaps', heatmaps_to_save, global_step)
+                                       heatmaps_b_edge_to_save]))
+
+                heatmaps_generated_to_save = make_grid(torch.stack([gen_ab_to_save,
+                                                          gen_ba_to_save,
+                                                          gen_aba_to_save,
+                                                          gen_bab_to_save]), normalize=True)
+                log_img('images', make_grid(torch.stack([heatmaps_input_to_save,
+                                                         heatmaps_generated_to_save]),
+                                            normalize=False,
+                                            nrow=1,
+                                            padding=0), global_step)
 
         if arg.GAN:
             mean_sum_loss_discrim = sum_loss_discrim / forward_times_per_epoch
