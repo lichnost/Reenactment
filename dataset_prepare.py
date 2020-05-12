@@ -79,17 +79,39 @@ def main(arg):
 def detect_annotations(arg, img_original, estimator, regressor, face_detector, points_num, file, devices):
     annotation_lines = []
 
-    faces = face_detector(img_original, 1)
+    img_for_detect = img_original
+
+    pixels = img_original.shape[0] * img_original.shape[1]
+    pixels_max = 2000000
+    scale_factor = 1
+    if pixels > pixels_max: # 2MP gpu memory overflow
+        scale_factor = pixels_max / pixels
+        img_for_detect = cv2.resize(img_original,
+                                    (int(img_original.shape[0] * scale_factor),
+                                     int(img_original.shape[1] * scale_factor)))
+
+    faces = face_detector(img_for_detect, 0)
     for face in faces:
         rec_list = face.rect
-        height = rec_list.bottom() - rec_list.top()
-        width = rec_list.right() - rec_list.left()
+
+        # bottom = rec_list.bottom()
+        # top = rec_list.top()
+        # right = rec_list.right()
+        # left = rec_list.left()
+
+        bottom = rec_list.bottom() * (1/scale_factor)
+        top = rec_list.top() * (1/scale_factor)
+        right = rec_list.right() * (1/scale_factor)
+        left = rec_list.left() * (1/scale_factor)
+
+        height = bottom - top
+        width = right - left
         # detect coords firstly to normalize face position
         bbox = [
-            int(rec_list.left() - arg.scale_ratio * width),
-            int(rec_list.top() - arg.scale_ratio * height),
-            int(rec_list.right() + arg.scale_ratio * width),
-            int(rec_list.bottom() + arg.scale_ratio * height)
+            int(left - arg.scale_ratio * width),
+            int(top - arg.scale_ratio * height),
+            int(right + arg.scale_ratio * width),
+            int(bottom + arg.scale_ratio * height)
         ]
 
         coords, _, inv_crop_matrix, _ = detect_coords(arg, img_original, bbox, arg.crop_size, estimator, regressor, devices)
@@ -106,7 +128,7 @@ def detect_annotations(arg, img_original, estimator, regressor, face_detector, p
 
             # cv2.circle(img_original, (int(x_t), int(y_t)), 2, (0, 0, 255), -1)
 
-        bbox = normalized_bbox(coords, arg.dataset)
+        bbox = normalized_bbox(coords, arg.dataset, face_size=arg.normalize_face_size, top_shift=arg.normalize_top_shift)
         bbox = [
             int(bbox[0]),
             int(bbox[1]),

@@ -1,13 +1,16 @@
+import torch
 import torch.nn as nn
 import tqdm
 import numpy as np
 from sklearn.decomposition import PCA
+from sklearn.neighbors import KDTree
 
 from utils import *
 from utils.args import parse_args
 from utils.dataset import ShapeDataset
 import cv2
 from utils.pdb import procrustes
+from models import PCA as PCAModule
 
 
 def init_aligned_shapes(dataset, shape_list, crop_size):
@@ -24,14 +27,14 @@ def init_aligned_shapes(dataset, shape_list, crop_size):
         crop_matrix = cv2.getAffineTransform(position_before, position_after)
         coord_x_after_crop = crop_matrix[0][0] * coord_x + crop_matrix[0][1] * coord_y + crop_matrix[0][2]
         coord_y_after_crop = crop_matrix[1][0] * coord_x + crop_matrix[1][1] * coord_y + crop_matrix[1][2]
-        shapes[0:kp_num[dataset], line_index] = list(coord_x_after_crop)
-        shapes[kp_num[dataset]:2 * kp_num[dataset], line_index] = list(coord_y_after_crop)
+        shapes[0:2*kp_num[dataset]:2, line_index] = list(coord_x_after_crop)
+        shapes[1:2*kp_num[dataset]:2, line_index] = list(coord_y_after_crop)
 
     aligned_shapes = shapes
     mean_shape = np.mean(aligned_shapes, 1)
-    mean_shape_xy = mean_shape.reshape((-1, 2), order='F')
+    mean_shape_xy = coords_seq_to_xy(dataset, mean_shape)
     for i in range(len(aligned_shapes[0])):
-        aligned_shape_xy = aligned_shapes[:, i].reshape((-1, 2), order='F')
+        aligned_shape_xy = coords_seq_to_xy(dataset, aligned_shapes[:, i])
         tmp_error, tmp_shape, tmp_trans = procrustes(mean_shape_xy, aligned_shape_xy, reflection=False)
         aligned_shapes[:, i] = tmp_shape.reshape((1, -1), order='F')
 
@@ -39,18 +42,19 @@ def init_aligned_shapes(dataset, shape_list, crop_size):
     mean_shape = mean_shape.repeat(len(aligned_shapes[0])).reshape(-1, len(aligned_shapes[0]))
     aligned_shapes = aligned_shapes - mean_shape
 
-    return np.transpose(shapes), np.transpose(aligned_shapes)
+    shapes = np.moveaxis(shapes, -1, 0)
+    aligned_shapes = np.moveaxis(aligned_shapes, -1, 0)
+    return shapes, aligned_shapes
 
-def main(arg):
+
+def main_pca(arg):
     list = get_annotations_list(arg.dataset_route, arg.dataset, arg.split, arg.crop_size, ispdb=arg.PDB)
     list_src = get_annotations_list(arg.dataset_route, arg.dataset, arg.split_source, arg.crop_size, ispdb=arg.PDB)
 
     shapes, aligned_shapes = init_aligned_shapes(arg.dataset, list, arg.crop_size)
     shapes_src, aligned_shapes_src = init_aligned_shapes(arg.dataset, list_src, arg.crop_size)
 
-    shapes_xy = np.zeros(shapes.shape)
-    shapes_xy[:, :shapes.shape[1]:2] = shapes[:, :kp_num[arg.dataset]]
-    shapes_xy[:, 1:shapes.shape[1]:2] = shapes[:, kp_num[arg.dataset]:]
+    shapes_xy = coords_seq_to_xy(arg.dataset, shapes)
 
     pca = PCA(n_components=arg.pca_components, svd_solver='full')
     pca.fit(shapes)
@@ -63,9 +67,8 @@ def main(arg):
     pose_params_mean[:, :] = 0
 
     mean_shapes = pca.inverse_transform(pose_params_mean)
-    mean_shapes_xy = np.zeros(mean_shapes.shape)
-    mean_shapes_xy[:, :mean_shapes.shape[1]:2] = mean_shapes[:, :kp_num[arg.dataset]]
-    mean_shapes_xy[:, 1:mean_shapes.shape[1]:2] = mean_shapes[:, kp_num[arg.dataset]:]
+
+    mean_shapes_xy = coords_seq_to_xy(arg.dataset, mean_shapes)
 
     img_mean = np.zeros((arg.crop_size, arg.crop_size, 3), dtype=np.uint8)
     items = 20
@@ -118,6 +121,110 @@ def main(arg):
     print('done')
 
 
+def main_kdtree(arg):
+    list = get_annotations_list(arg.dataset_route, arg.dataset, arg.split, arg.crop_size, ispdb=arg.PDB)
+    list_src = get_annotations_list(arg.dataset_route, arg.dataset, arg.split_source, arg.crop_size, ispdb=arg.PDB)
+
+    shapes, aligned_shapes = init_aligned_shapes(arg.dataset, list, arg.crop_size)
+    shapes_src, aligned_shapes_src = init_aligned_shapes(arg.dataset, list_src, arg.crop_size)
+
+    tree = KDTree(shapes)
+
+    img = np.zeros((arg.crop_size, arg.crop_size, 3), dtype=np.uint8)
+
+    items = 50
+    for x in range(0, items):
+        index = random.randint(0, shapes_src.shape[0]-1)
+        print(str(index))
+
+        shape_source = shapes_src[index].reshape([1, 2*kp_num[arg.dataset]])
+        neighbor_dist, neighbor_index = tree.query(shape_source, k=200)
+
+        for idx in neighbor_index[0]:
+            img_show = img.copy()
+            shape_target = shapes[idx].reshape([1, 2*kp_num[arg.dataset]])
+
+            for i in range(0, kp_num[arg.dataset]-1):
+                draw_circle(img_show, (int(shape_source[0, i]), int(shape_source[0, kp_num[arg.dataset]+ i]))) # red
+                draw_circle(img_show, (int(shape_target[0, i]), int(shape_target[0, kp_num[arg.dataset] + i])), color=(255, 0, 0)) # blue
+
+            show_img(img_show)
+
+
+def main_pca_net(arg):
+    devices = get_devices_list(arg)
+
+    list = get_annotations_list(arg.dataset_route, arg.dataset, arg.split, arg.crop_size, ispdb=arg.PDB)
+    list_src = get_annotations_list(arg.dataset_route, arg.dataset, arg.split_source, arg.crop_size, ispdb=arg.PDB)
+
+    shapes, aligned_shapes = init_aligned_shapes(arg.dataset, list, arg.crop_size)
+    shapes_src, aligned_shapes_src = init_aligned_shapes(arg.dataset, list_src, arg.crop_size)
+
+    pca = create_model_pca(arg, devices, eval=False)
+    pca.eval()
+
+    pca_inverse = create_model_pca(arg, devices, eval=False, inverse=True)
+    pca_inverse.eval()
+
+    criterion = nn.MSELoss()
+
+    img = np.zeros((arg.crop_size, arg.crop_size, 3), dtype=np.uint8)
+
+    items = 50
+    for x in range(0, items):
+        index = random.randint(0, shapes_src.shape[0] - 1)
+        print(str(index))
+
+        shape_source = coords_xy_to_seq(arg.dataset, shapes_src[index:index+1, ...])
+        shape_source = torch.tensor(shape_source, dtype=torch.float32).unsqueeze(0)
+        if arg.cuda:
+            shape_source = shape_source.cuda(device=devices[0])
+
+        pose_params = pca(shape_source)
+        shape_restored = pca_inverse(pose_params)
+
+        img_show = img.copy()
+        shape_source = shape_source.cpu().numpy()
+        shape_restored = shape_restored.detach().cpu().numpy()
+
+        for i in range(0, kp_num[arg.dataset] - 1):
+            draw_circle(img_show, (int(shape_source[0, 2*i]), int(shape_source[0, 2*i+1])))  # red
+            draw_circle(img_show, (int(shape_restored[0, 2*i]), int(shape_restored[0, 2*i+1])),
+                        color=(255, 0, 0))  # blue
+
+        loss = criterion(shape_restored, shape_source)
+        print(str(loss.item()))
+        show_img(img_show)
+
+
+def main_pca_to_net(arg):
+    list = get_annotations_list(arg.dataset_route, arg.dataset, arg.split, arg.crop_size, ispdb=arg.PDB)
+    list_src = get_annotations_list(arg.dataset_route, arg.dataset, arg.split_source, arg.crop_size, ispdb=arg.PDB)
+
+    shapes, aligned_shapes = init_aligned_shapes(arg.dataset, list, arg.crop_size)
+    shapes_src, aligned_shapes_src = init_aligned_shapes(arg.dataset, list_src, arg.crop_size)
+
+    shapes = np.concatenate((shapes, shapes_src), axis=0)
+
+    pca = PCA(n_components=arg.pca_components, svd_solver='full')
+    pca.fit(shapes)
+
+    model_pca = PCAModule(2*kp_num[arg.dataset], arg.pca_components)
+    model_pca.load_parameters(pca.components_, pca.mean_)
+
+    model_pca_inv = PCAModule(2 * kp_num[arg.dataset], arg.pca_components)
+    model_pca_inv.load_parameters(pca.components_, pca.mean_, inverse=True)
+
+    pose_params = pca.transform(shapes)
+    pose_params_model = model_pca(torch.FloatTensor(shapes)).detach().numpy()
+
+    inv_shapes = pca.inverse_transform(pose_params)
+    inv_model_shapes = model_pca_inv(torch.FloatTensor(pose_params_model)).detach().numpy()
+
+    pass
+
+
+
 if __name__ == '__main__':
     arg = parse_args()
-    main(arg)
+    main_pca_to_net(arg)

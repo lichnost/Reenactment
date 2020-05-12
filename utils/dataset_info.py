@@ -25,16 +25,18 @@ dataset_pdb_numbins = {
     'AFLW': 17,
     'COFW': 7,
     'WFLW': 13,
-    'Faces': 13
+    'Faces': 13,
+    'CelebA': 13
 }
 
 def init_dataset_route(dataset_route):
     return {
-    '300W': dataset_route+'/300W/',
-    'AFLW': dataset_route+'/AFLW/',
-    'COFW': dataset_route+'/COFW/',
-    'WFLW': dataset_route+'/WFLW/',
-    'Faces': dataset_route+'/Faces/'
+        '300W': dataset_route+'/300W/',
+        'AFLW': dataset_route+'/AFLW/',
+        'COFW': dataset_route+'/COFW/',
+        'WFLW': dataset_route+'/WFLW/',
+        'Faces': dataset_route+'/Faces/',
+        'CelebA': dataset_route + '/CelebA/'
     }
 
 dataset_size = {
@@ -70,15 +72,19 @@ dataset_size = {
         'Adush':           7089,
         'DonaldTrump':     39800,
         'Kathleen':        39782
+    },
+    'CelebA': {
+        'train':    192829
     }
 }
 
 kp_num = {
-    '300W': 68, 
+    '300W': 68,
     'AFLW': 19,
     'COFW': 29, 
     'WFLW': 98,
-    'Faces': 98
+    'Faces': 98,
+    'CelebA': 98
 }
 
 point_num_per_boundary = {
@@ -86,14 +92,15 @@ point_num_per_boundary = {
     'AFLW': [1.,  3., 3., 1., 2., 3., 3., 3., 3., 3., 3., 3., 3.],
     'COFW': [1.,  3., 3., 1., 3., 3., 3., 3., 3., 3., 1., 1., 3.],
     'WFLW': [33., 9., 9., 4., 5., 5., 5., 5., 5., 7., 5., 5., 7.],
-    'Faces': [33., 9., 9., 4., 5., 5., 5., 5., 5., 7., 5., 5., 7.]
+    'Faces': [33., 9., 9., 4., 5., 5., 5., 5., 5., 7., 5., 5., 7.],
+    'CelebA': [33., 9., 9., 4., 5., 5., 5., 5., 5., 7., 5., 5., 7.]
 }
 
 boundary_special = {  # Some boundary lines use key points and other boundaries to form discontinuous intersections, special treatment
-    'lle':  ['300W', 'COFW', 'WFLW', 'Faces'],
-    'rle':  ['300W', 'COFW', 'WFLW', 'Faces'],
-    'usll': ['300W', 'WFLW', 'Faces'],
-    'lsll': ['300W', 'COFW', 'WFLW', 'Faces']
+    'lle':  ['300W', 'COFW', 'WFLW', 'Faces', 'CelebA'],
+    'rle':  ['300W', 'COFW', 'WFLW', 'Faces', 'CelebA'],
+    'usll': ['300W', 'WFLW', 'Faces', 'CelebA'],
+    'lsll': ['300W', 'COFW', 'WFLW', 'Faces',  'CelebA']
 }
 
 duplicate_point = {  # Sequence number of key points to be reused, counting from 0
@@ -115,6 +122,12 @@ duplicate_point = {  # Sequence number of key points to be reused, counting from
         'lsll': 76
     },
     'Faces': {
+        'lle':  60,
+        'rle':  68,
+        'usll': 88,
+        'lsll': 76
+    },
+    'CelebA': {
         'lle':  60,
         'rle':  68,
         'usll': 88,
@@ -144,6 +157,11 @@ point_range = {  # notice: this is 'range', the later number pluses 1; the order
         [88, 93], [92, 96], [82, 88]
     ],
     'Faces': [
+        [0, 33],  [33, 38], [42, 47], [51, 55], [55, 60],
+        [60, 65], [64, 68], [68, 73], [72, 76], [76, 83],
+        [88, 93], [92, 96], [82, 88]
+    ],
+    'CelebA': [
         [0, 33],  [33, 38], [42, 47], [51, 55], [55, 60],
         [60, 65], [64, 68], [68, 73], [72, 76], [76, 83],
         [88, 93], [92, 96], [82, 88]
@@ -215,34 +233,53 @@ flip_relation = {
         [84, 86], [85, 85], [86, 84], [87, 83], [88, 92], [89, 91],
         [90, 90], [91, 89], [92, 88], [93, 95], [94, 94], [95, 93],
         [96, 97], [97, 96]
+    ],
+    'CelebA': [
+        [0, 32],  [1, 31],  [2, 30],  [3, 29],  [4, 28],  [5, 27],
+        [6, 26],  [7, 25],  [8, 24],  [9, 23],  [10, 22], [11, 21],
+        [12, 20], [13, 19], [14, 18], [15, 17], [16, 16], [17, 15],
+        [18, 14], [19, 13], [20, 12], [21, 11], [22, 10], [23, 9],
+        [24, 8],  [25, 7],  [26, 6],  [27, 5],  [28, 4],  [29, 3],
+        [30, 2],  [31, 1],  [32, 0],  [33, 46], [34, 45], [35, 44],
+        [36, 43], [37, 42], [38, 50], [39, 49], [40, 48], [41, 47],
+        [42, 37], [43, 36], [44, 35], [45, 34], [46, 33], [47, 41],
+        [48, 40], [49, 39], [50, 38], [51, 51], [52, 52], [53, 53],
+        [54, 54], [55, 59], [56, 58], [57, 57], [58, 56], [59, 55],
+        [60, 72], [61, 71], [62, 70], [63, 69], [64, 68], [65, 75],
+        [66, 74], [67, 73], [68, 64], [69, 63], [70, 62], [71, 61],
+        [72, 60], [73, 67], [74, 66], [75, 65], [76, 82], [77, 81],
+        [78, 80], [79, 79], [80, 78], [81, 77], [82, 76], [83, 87],
+        [84, 86], [85, 85], [86, 84], [87, 83], [88, 92], [89, 91],
+        [90, 90], [91, 89], [92, 88], [93, 95], [94, 94], [95, 93],
+        [96, 97], [97, 96]
     ]
 }
 
-left_eye_left_corner_index_x = {'300W': 72, 'AFLW': 20, 'COFW': 26, 'WFLW': 120, 'Faces': 120}
-left_eye_left_corner_index_y = {'300W': 73, 'AFLW': 21, 'COFW': 27, 'WFLW': 121, 'Faces': 121}
-left_eye_right_corner_index_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 168, 'Faces': 168}
-left_eye_right_corner_index_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 169, 'Faces': 169}
+left_eye_left_corner_index_x = {'300W': 72, 'AFLW': 20, 'COFW': 26, 'WFLW': 120, 'Faces': 120, 'CelebA': 120}
+left_eye_left_corner_index_y = {'300W': 73, 'AFLW': 21, 'COFW': 27, 'WFLW': 121, 'Faces': 121, 'CelebA': 121}
+left_eye_right_corner_index_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 168, 'Faces': 168, 'CelebA': 168}
+left_eye_right_corner_index_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 169, 'Faces': 169, 'CelebA': 169}
 
-right_eye_right_corner_index_x = {'300W': 90, 'AFLW': 30, 'COFW': 38, 'WFLW': 144, 'Faces': 144}
-right_eye_right_corner_index_y = {'300W': 91, 'AFLW': 31, 'COFW': 39, 'WFLW': 145, 'Faces': 145}
-right_eye_left_corner_index_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 176, 'Faces': 176}
-right_eye_left_corner_index_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 177, 'Faces': 177}
+right_eye_right_corner_index_x = {'300W': 90, 'AFLW': 30, 'COFW': 38, 'WFLW': 144, 'Faces': 144, 'CelebA': 144}
+right_eye_right_corner_index_y = {'300W': 91, 'AFLW': 31, 'COFW': 39, 'WFLW': 145, 'Faces': 145, 'CelebA': 145}
+right_eye_left_corner_index_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 176, 'Faces': 176, 'CelebA': 176}
+right_eye_left_corner_index_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 177, 'Faces': 177, 'CelebA': 177}
 
-left_eye_center_index_x = {'300W': [72, 74, 76, 78, 80, 82], 'AFLW': 22, 'COFW': 54, 'WFLW': 192, 'Faces': 192}
-left_eye_center_index_y = {'300W': [73, 75, 77, 79, 81, 83], 'AFLW': 23, 'COFW': 55, 'WFLW': 193, 'Faces': 193}
-right_eye_center_index_x = {'300W': [84, 86, 88, 90, 92, 94], 'AFLW': 28, 'COFW': 56, 'WFLW': 194, 'Faces': 194}
-right_eye_center_index_y = {'300W': [85, 87, 89, 91, 93, 95], 'AFLW': 29, 'COFW': 57, 'WFLW': 195, 'Faces': 195}
+left_eye_center_index_x = {'300W': [72, 74, 76, 78, 80, 82], 'AFLW': 22, 'COFW': 54, 'WFLW': 192, 'Faces': 192, 'CelebA': 192}
+left_eye_center_index_y = {'300W': [73, 75, 77, 79, 81, 83], 'AFLW': 23, 'COFW': 55, 'WFLW': 193, 'Faces': 193, 'CelebA': 193}
+right_eye_center_index_x = {'300W': [84, 86, 88, 90, 92, 94], 'AFLW': 28, 'COFW': 56, 'WFLW': 194, 'Faces': 194, 'CelebA': 194}
+right_eye_center_index_y = {'300W': [85, 87, 89, 91, 93, 95], 'AFLW': 29, 'COFW': 57, 'WFLW': 195, 'Faces': 195, 'CelebA': 195}
 
-nose_tip_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 108, 'Faces': 108}
-nose_tip_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 109, 'Faces': 109}
+nose_tip_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 108, 'Faces': 108, 'CelebA': 108}
+nose_tip_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 109, 'Faces': 109, 'Faces': 109}
 
-chin_bottom_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 32, 'Faces': 32}
-chin_bottom_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 33, 'Faces': 33}
+chin_bottom_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 32, 'Faces': 32, 'CelebA': 32}
+chin_bottom_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 33, 'Faces': 33, 'CelebA': 33}
 
-left_mouth_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [152, 176], 'Faces': [152, 176]}
-left_mouth_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [153, 177], 'Faces': [153, 177]}
-right_mouth_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [164, 184], 'Faces': [164, 184]}
-right_mouth_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [165, 185], 'Faces': [165, 185]}
+left_mouth_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [152, 176], 'Faces': [152, 176], 'CelebA': [152, 176]}
+left_mouth_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [153, 177], 'Faces': [153, 177], 'CelebA': [153, 177]}
+right_mouth_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [164, 184], 'Faces': [164, 184], 'CelebA': [164, 184]}
+right_mouth_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': [165, 185], 'Faces': [165, 185], 'CelebA': [165, 185]}
 
 nparts = {  # [chin, brow, nose, eyes, mouth], totally 5 parts
     '300W': [
@@ -253,11 +290,17 @@ nparts = {  # [chin, brow, nose, eyes, mouth], totally 5 parts
     ],
     'Faces': [
         [0, 33], [33, 51], [51, 60],  [60, 76], [76, 96]
+    ],
+    'CelebA': [
+        [0, 33], [33, 51], [51, 60],  [60, 76], [76, 96]
     ]
 }
 
 # [R, G, B]
 means_color = {
+    '300W' : {
+        'train': [115.5025,  98.7459,  89.0415]
+    },
     'WFLW' : {
         'train' : [121.9431, 109.9834, 103.8265]
     },
@@ -266,11 +309,17 @@ means_color = {
         'Adush': [134.0603, 112.3645, 105.7585],
         'DonaldTrump': [112.5789,  88.4065,  77.6387],
         'Kathleen': [128.1358, 113.4770, 106.6879]
+    },
+    'CelebA': {
+        'train': [127.5188, 109.9787, 101.6469]
     }
 }
 
 # [R, G, B]
 stds_color = {
+    '300W' : {
+        'train': [69.1901, 63.6305, 62.0104]
+    },
     'WFLW' : {
         'train' : [69.0449, 66.0566, 65.7376]
     },
@@ -279,10 +328,16 @@ stds_color = {
         'Adush': [48.5046, 53.2059, 54.5474],
         'DonaldTrump': [64.8365, 45.0323, 42.1931],
         'Kathleen': [60.6885, 59.7532, 61.7567]
+    },
+    'CelebA': {
+        'train': [69.6463, 64.9499, 64.1480]
     }
 }
 
 means_gray = {
+    '300W' : {
+        'train': 102.6485
+    },
     'WFLW' : {
         'train' : 112.8571
     },
@@ -291,11 +346,17 @@ means_gray = {
         'Adush': 118.0988,
         'DonaldTrump': 94.4065,
         'Kathleen': 117.0859
+    },
+    'CelebA': {
+        'train': 114.2734
     }
 }
 
 
 stds_gray = {
+    '300W' : {
+        'train': 63.6989
+    },
     'WFLW' : {
         'train' : 64.8045
     },
@@ -304,5 +365,6 @@ stds_gray = {
         'Adush': 50.3819,
         'DonaldTrump': 48.2041,
         'Kathleen': 59.8618
-    }
+    },
+    'CelebA': 64.6506
 }

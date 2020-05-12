@@ -185,7 +185,7 @@ def eval_CED(auc_record):
 
 
 def draw_circle(img, xy, color=(0, 0, 255)):
-    return cv2.circle(img, xy, 2, color, -1)
+    return cv2.circle(img, xy, 3, color, -1)
 
 
 def draw_text(img, text, xy, color=(0, 0, 255), scale=1):

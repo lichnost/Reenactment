@@ -6,7 +6,7 @@ from kornia.color import denormalize, normalize, rgb_to_grayscale, rgb_to_bgr
 from kornia import tensor_to_image
 from torch.utils.tensorboard import SummaryWriter
 
-from models import GPLoss, CPLoss, WingLoss, AdaptiveWingLoss, FeatureLoss
+from models import GPLoss, CPLoss, WingLoss, AWingLoss, FeatureLoss
 from utils import *
 from utils.args import parse_args
 from utils.dataset import DecoderDataset
@@ -59,22 +59,12 @@ def train(arg):
     decoder = create_model_decoder(arg, devices)
     decoder.train()
 
-    discrim = None
-    if arg.GAN:
-        discrim = create_model_decoder_discrim(arg, devices)
-        discrim.train()
-
     edge = create_model_edge(arg, devices, eval=True)
     edge.eval()
 
     print('Creating networks done!')
 
-    optimizer_decoder, scheduler_decoder = create_optimizer(arg, decoder.parameters())
-
-    optimizer_discrim = None
-    scheduler_discrim = None
-    if discrim:
-        optimizer_discrim, scheduler_discrim = create_optimizer(arg, discrim.parameters())
+    optimizer_decoder, scheduler_decoder = create_optimizer(arg, decoder.parameters(), create_scheduler=True)
 
     criterion_gp = None
     if arg.gp_loss:
@@ -87,10 +77,6 @@ def train(arg):
         criterion_cp = CPLoss()
         if arg.cuda:
             criterion_cp = criterion_cp.cuda(device=devices[0])
-
-    criterion_pixel = nn.L1Loss()
-    if arg.cuda:
-        criterion_pixel = criterion_pixel.cuda(device=devices[0])
 
     criterion_feature = None
     if arg.feature_loss:
@@ -109,24 +95,10 @@ def train(arg):
         elif arg.loss_type == 'wingloss':
             criterion_regressor = WingLoss(omega=arg.wingloss_omega, epsilon=arg.wingloss_epsilon)
         else:
-            criterion_regressor = AdaptiveWingLoss(arg.wingloss_omega, theta=arg.wingloss_theta, epsilon=arg.wingloss_epsilon,
-                                         alpha=arg.wingloss_alpha)
+            criterion_regressor = AWingLoss(arg.wingloss_omega, theta=arg.wingloss_theta, epsilon=arg.wingloss_epsilon,
+                                            alpha=arg.wingloss_alpha)
         if arg.cuda:
             criterion_regressor = criterion_regressor.cuda(device=devices[0])
-
-    criterion_gan = None
-    if discrim is not None:
-        criterion_gan = nn.BCELoss()
-
-        discrim_false = torch.zeros((arg.batch_size, 1, 30, 30))
-        discrim_true = torch.ones((arg.batch_size, 1, 30, 30))
-        if arg.cuda:
-            criterion_gan = criterion_gan.cuda(device=devices[0])
-
-            discrim_false = discrim_false.cuda(device=devices[0])
-            discrim_true = discrim_true.cuda(device=devices[0])
-
-
 
     print('Loading dataset ...')
     trainset = DecoderDataset(arg, dataset=arg.dataset, split=arg.split)
@@ -145,14 +117,13 @@ def train(arg):
     print('Start training ...')
     for epoch in range(arg.resume_epoch, arg.max_epoch):
         global_step_base = epoch * steps_per_epoch
-        forward_times_per_epoch, sum_loss_decoder, sum_loss_discrim = 0, 0., 0.
+        forward_times_per_epoch, sum_loss_decoder, = 0, 0.
 
         for data in tqdm.tqdm(dataloader):
             forward_times_per_epoch += 1
             global_step = global_step_base + forward_times_per_epoch
 
             input_images, input_images_norm, gt_coords_xy = data
-            input_batch_size = input_images.shape[0]
 
             # show_img(tensor_to_image(rgb_to_bgr(denormalize(input_images_norm[0].unsqueeze(0), mean, std)).squeeze()), 'target', wait=0, keep=True)
 
@@ -168,46 +139,15 @@ def train(arg):
 
             fake_images_norm = decoder(heatmaps)
 
-            if discrim is not None:
-                discrim.train()
-                optimizer_discrim.zero_grad()
-                heatmaps_discrim = F.interpolate(heatmaps, 256, mode='bilinear')
-
-                # heatmap_show = get_heatmap_gray(heatmaps_discrim[0].unsqueeze(0)).detach().cpu().numpy()
-                # heatmap_show = (
-                #         255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
-                # heatmap_show = np.moveaxis(heatmap_show, 0, -1)
-                # show_img(heatmap_show, 'heatmap', wait=2000, keep=False)
-
-                discrim_input = torch.cat((heatmaps_discrim, input_images_norm), 1)
-                discrim_output = discrim(discrim_input)
-                loss_discrim_true = criterion_gan(discrim_output, discrim_true[:input_batch_size, ...])
-
-                discrim_input = torch.cat((heatmaps_discrim, fake_images_norm), 1)
-                discrim_output = discrim(discrim_input)
-                loss_discrim_fake = criterion_gan(discrim_output, discrim_false[:input_batch_size, ...])
-                loss_discrim = (loss_discrim_fake + loss_discrim_true) * 0.5
-
-                log('loss_discrim', loss_discrim.item(), global_step)
-                loss_discrim.backward(retain_graph=True)
-                optimizer_discrim.step()
-
             optimizer_decoder.zero_grad()
 
-            loss_decoder = None
-            if criterion_gp is not None:
-                loss_gp = criterion_gp(fake_images_norm, input_images_norm)
-                loss_decoder = loss_decoder + arg.loss_gp_lambda * loss_gp if loss_decoder is not None else arg.loss_gp_lambda * loss_gp
-                log('loss_gp', loss_gp.item(), global_step)
+            loss_gp = criterion_gp(fake_images_norm, input_images_norm)
+            loss_decoder = arg.loss_gp_lambda * loss_gp
+            log('loss_gp', loss_gp.item(), global_step)
 
-            if criterion_cp is not None:
-                loss_cp = criterion_cp(fake_images_norm, input_images_norm)
-                loss_decoder = loss_decoder + arg.loss_cp_lambda * loss_cp if loss_decoder is not None else arg.loss_cp_lambda * loss_cp
-                log('loss_cp', loss_cp.item(), global_step)
-
-            loss_pixel = criterion_pixel(fake_images_norm, input_images_norm)
-            loss_decoder = loss_decoder + arg.loss_pixel_lambda * loss_pixel if loss_decoder is not None else arg.loss_pixel_lambda * loss_pixel
-            log('loss_pixel', loss_pixel.item(), global_step)
+            loss_cp = criterion_cp(fake_images_norm, input_images_norm)
+            loss_decoder = loss_decoder + arg.loss_cp_lambda * loss_cp
+            log('loss_cp', loss_cp.item(), global_step)
 
             if criterion_feature is not None:
                 loss_feature = criterion_feature(fake_images_norm, input_images_norm)
@@ -228,39 +168,23 @@ def train(arg):
 
                 log('loss_regressor', loss_regressor.item(), global_step)
 
-            if discrim is not None:
-                discrim.eval()
-                with torch.no_grad():
-                    discrim_output = discrim(discrim_input)
-
-                loss_gan = criterion_gan(discrim_output, discrim_true[:input_batch_size, ...])
-                loss_decoder = loss_decoder + arg.loss_discrim_lambda * loss_gan
-                log('loss_gan', loss_gan.item(), global_step)
-
             log('loss_decoder', loss_decoder.item(), global_step)
 
             loss_decoder.backward()
             optimizer_decoder.step()
 
             sum_loss_decoder += loss_decoder.item()
-            if discrim is not None:
-                sum_loss_discrim += loss_discrim.item()
 
             if arg.save_logs:
                 images_to_save = np.uint8(denormalize(fake_images_norm[0, ...], mean, std).detach().cpu().numpy())
                 log_img('fake_image', images_to_save, global_step)
 
         mean_loss_decoder = sum_loss_decoder / forward_times_per_epoch
-        mean_loss_discrim = sum_loss_discrim / forward_times_per_epoch
 
         scheduler_decoder.step(mean_loss_decoder)
-        if scheduler_discrim is not None:
-            scheduler_discrim.step(mean_loss_discrim)
 
         if (epoch+1) % arg.save_interval == 0:
             torch.save(decoder.state_dict(), arg.save_folder + 'decoder_' + arg.dataset + '_' + arg.split + '_' + str(epoch+1) + '.pth')
-            torch.save(discrim.state_dict(), arg.save_folder + 'decoder_discrim_' + arg.dataset + '_' + arg.split + '_' + str(
-                           epoch + 1) + '.pth')
 
         print('\nepoch: {:0>4d} | loss_decoder: {:.10f}'.format(
             epoch,
@@ -268,7 +192,6 @@ def train(arg):
         ))
 
     torch.save(decoder.state_dict(), arg.save_folder + 'decoder_' + arg.dataset + '_' + arg.split + '_' + str(epoch+1) + '.pth')
-    torch.save(discrim.state_dict(), arg.save_folder + 'decoder_discrim_' + arg.dataset + '_' + arg.split + '_' + str(epoch + 1) + '.pth')
     print('Training done!')
 
 

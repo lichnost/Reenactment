@@ -5,9 +5,14 @@ from kornia import image_to_tensor, bgr_to_rgb
 from .dataset_info import *
 import numpy as np
 from .dataload import get_gt_coords, further_transform, get_random_transform_param, get_affine_matrix,\
-    get_cropped_coords, get_mean_std_color, get_mean_std_gray, pic_normalize_color, convert_img_to_gray, pic_normalize_gray
+    get_cropped_coords, get_mean_std_color, get_mean_std_gray, pic_normalize_color, convert_img_to_gray, pic_normalize_gray,\
+    get_gt_heatmap, coords_xy_to_seq, coords_seq_to_xy
+from .visual import draw_circle, show_img
 from utils.pdb import procrustes
 from sklearn.decomposition import PCA
+from sklearn.neighbors import KDTree
+import torch
+import random
 
 class OriginalImageDataset(data.Dataset):
 
@@ -29,7 +34,7 @@ class OriginalImageDataset(data.Dataset):
 
 class ShapeDataset(data.Dataset):
 
-    def __init__(self, arg, dataset, split, pca_components=20):
+    def __init__(self, arg, dataset, split, pca_components=20, trainset_sim=None):
         self.arg = arg
         self.dataset = dataset
         self.split = split
@@ -42,6 +47,11 @@ class ShapeDataset(data.Dataset):
         self.aligned_pose_params = None
 
         self.init_aligned_shapes(arg.crop_size)
+
+        self.tree = None
+        if trainset_sim is not None:
+            self.trainset_sim = trainset_sim
+            self.tree = KDTree(np.float32(self.trainset_sim.shapes))
 
     def init_aligned_shapes(self, crop_size):
         shapes = np.zeros((2 * kp_num[self.dataset], len(self.list)))
@@ -57,14 +67,14 @@ class ShapeDataset(data.Dataset):
             crop_matrix = cv2.getAffineTransform(position_before, position_after)
             coord_x_after_crop = crop_matrix[0][0] * coord_x + crop_matrix[0][1] * coord_y + crop_matrix[0][2]
             coord_y_after_crop = crop_matrix[1][0] * coord_x + crop_matrix[1][1] * coord_y + crop_matrix[1][2]
-            shapes[0:kp_num[self.dataset], line_index] = list(coord_x_after_crop)
-            shapes[kp_num[self.dataset]:2 * kp_num[self.dataset], line_index] = list(coord_y_after_crop)
+            shapes[0:2*kp_num[self.dataset]:2, line_index] = list(coord_x_after_crop)
+            shapes[1:2*kp_num[self.dataset]:2, line_index] = list(coord_y_after_crop)
 
         aligned_shapes = shapes
         mean_shape = np.mean(aligned_shapes, 1)
-        mean_shape_xy = mean_shape.reshape((-1, 2), order='F')
+        mean_shape_xy = coords_seq_to_xy(self.dataset, mean_shape)
         for i in range(len(aligned_shapes[0])):
-            aligned_shape_xy = aligned_shapes[:, i].reshape((-1, 2), order='F')
+            aligned_shape_xy = coords_seq_to_xy(self.dataset, aligned_shapes[:, i])
             tmp_error, tmp_shape, tmp_trans = procrustes(mean_shape_xy, aligned_shape_xy, reflection=False)
             aligned_shapes[:, i] = tmp_shape.reshape((1, -1), order='F')
 
@@ -72,29 +82,48 @@ class ShapeDataset(data.Dataset):
         mean_shape = mean_shape.repeat(len(aligned_shapes[0])).reshape(-1, len(aligned_shapes[0]))
         aligned_shapes = aligned_shapes - mean_shape
 
+        shapes = np.moveaxis(shapes, -1, 0)
+
+        # img_show = np.zeros((crop_size, crop_size, 3), dtype=np.uint8)
+        # idx = random.randint(0, shapes.shape[0] - 1)
+        # for i in range(0, kp_num[self.dataset] - 1):
+        #     draw_circle(img_show, (int(shapes[idx, 2*i]), int(shapes[idx, 2*i+1])))  # red
+        #
+        # show_img(img_show)
+
         pca = PCA(n_components=self.pca_components, svd_solver='full')
-        pose_params = pca.fit_transform(np.transpose(shapes))
+        pose_params = pca.fit_transform(shapes)
 
+        aligned_shapes = np.moveaxis(aligned_shapes, -1, 0)
         pca_aligned = PCA(n_components=self.pca_components, svd_solver='full')
-        aligned_pose_params = pca_aligned.fit_transform(np.transpose(aligned_shapes))
+        aligned_pose_params = pca_aligned.fit_transform(aligned_shapes)
 
-        self.shapes = np.moveaxis(shapes, -1, 0)
+        self.shapes = shapes
         self.pose_params = pose_params
 
-        self.aligned_shapes = np.moveaxis(aligned_shapes, -1, 0)
+        self.aligned_shapes = aligned_shapes
         self.aligned_pose_params = aligned_pose_params
 
     def __len__(self):
         return len(self.list)
 
     def __getitem__(self, item):
-        gt_coords_xy = np.float32(self.shapes[item]).reshape((-1, 2), order='F')
+        gt_coords_xy = np.float32(self.shapes[item])
+        gt_heatmap = get_gt_heatmap(self.dataset, gt_coords_xy.reshape([2*kp_num[self.arg.dataset]]),
+                                    self.arg.crop_size, self.arg.sigma)
         pose_param = np.float32(self.pose_params[item])
 
-        aligned_coords_xy = np.float32(self.aligned_shapes[item]).reshape((-1, 2), order='F')
+        aligned_coords_xy = np.float32(self.aligned_shapes[item])
         aligned_pose_params = np.float32(self.aligned_pose_params[item])
-        return gt_coords_xy, pose_param, aligned_coords_xy, aligned_pose_params
 
+        return gt_coords_xy, gt_heatmap, pose_param, aligned_coords_xy, aligned_pose_params
+
+    def get_similars(self, shapes):
+        if self.tree is not None:
+            _, indexes = self.tree.query(coords_xy_to_seq(self.dataset, shapes))
+            return tuple(map(torch.tensor, zip(*[self.trainset_sim[i]
+                                                 for i in indexes])))
+        return None
 
 class GeneralDataset(data.Dataset):
 
@@ -130,7 +159,7 @@ class DecoderDataset(data.Dataset):
 
     def __getitem__(self, item):
         dataset_route, dataset, split, type, annotation, crop_size, RGB, sigma, trans_ratio, rotate_limit,\
-        scale_ratio_up, scale_ration_down, scale_horizontal, scale_vertical =\
+        scale_ratio_up, scale_ratio_down, scale_horizontal, scale_vertical =\
             self.arg.dataset_route, self.dataset, self.split, self.type,\
             self.list[item], self.arg.crop_size, self.arg.RGB, self.arg.sigma,\
             self.arg.trans_ratio, self.arg.rotate_limit, self.arg.scale_ratio_up, self.arg.scale_ratio_down,\
@@ -144,6 +173,11 @@ class DecoderDataset(data.Dataset):
 
         translation, trans_dir, rotation, scaling, scaling_horizontal, scaling_vertical, flip, gaussian_blur = get_random_transform_param(
             type, bbox, trans_ratio, rotate_limit, scale_ratio_up, scale_ratio_down, scale_horizontal, scale_vertical, flip=False, gaussian=False)
+
+        horizontal_add = (bbox[2] - bbox[0]) * (1 - scaling)
+        vertical_add = (bbox[3] - bbox[1]) * (1 - scaling)
+        bbox = np.float32(
+            [bbox[0] - horizontal_add, bbox[1] - vertical_add, bbox[2] + horizontal_add, bbox[3] + vertical_add])
 
         horizontal_add = (bbox[2] - bbox[0]) * scaling_horizontal
         vertical_add = (bbox[3] - bbox[1]) * scaling_vertical

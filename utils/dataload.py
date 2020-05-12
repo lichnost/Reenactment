@@ -124,7 +124,7 @@ def pic_normalize_color_single(pic, mean=None, std=None):
         std = pic.std(axis=(0, 1, 2), keepdims=True)
     std = np.where(std < 1e-6, 1, std)
     pic = (pic - mean) / std
-    return np.float32(pic)
+    return pic
 
 
 def pic_normalize_color(pic, mean=None, std=None):
@@ -222,10 +222,10 @@ def get_mean_std_color(dataset, split):
     mean = None
     std = None
     if dataset in means_color and split in means_color[dataset]:
-        mean = means_color[dataset][split]
+        mean = np.array(means_color[dataset][split])
     if dataset in stds_color and split in stds_color[dataset]:
-        std = stds_color[dataset][split]
-    return np.array(mean), np.array(std)
+        std = np.array(stds_color[dataset][split])
+    return mean, std
 
 
 def get_mean_std_gray(dataset, split):
@@ -308,3 +308,30 @@ def get_item_from(dataset_route, dataset, split, type, annotation, crop_size, RG
 
     pic_affine_orig = np.moveaxis(pic_affine_orig, -1, 0)
     return pic_affine_orig, pic_affine, pic_affine_orig_norm, gt_coords_xy, gt_heatmap, coord_xy, bbox, annotation[-1]
+
+
+def coords_seq_to_xy(dataset, shapes):
+    '''
+    [B, x1, y1, x2, y2, ...] -> [B, [x1, y1], [x2, y2], ...]
+    :param dataset:
+    :param shapes:
+    :return:
+    '''
+    if shapes.shape[0] == kp_num[dataset] * 2 + 1:
+        return shapes.reshape((-1, kp_num[dataset], 2), order='F')
+    else:
+        return shapes.reshape((-1, 2), order='F')
+
+
+
+def coords_xy_to_seq(dataset, shapes_xy):
+    '''
+    [B, [x1, y1], [x2, y2], ...] -> [B, x1, y1, x2, y2, ...]
+    :param dataset:
+    :param shapes:
+    :return:
+    '''
+    if len(shapes_xy.shape) == 3:
+        return shapes_xy.reshape((-1, 2*kp_num[dataset]))
+    else:
+        return shapes_xy.reshape((-1))

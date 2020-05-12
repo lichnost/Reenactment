@@ -1,2 +1,15 @@
-kornia
-torch_optimizer
+#conda install pytorch==1.5.0 cudatoolkit=10.1 -c pytorch
+#conda install pytorch3d==0.2.0 -c pytorch3d
+torchvision==0.6.0
+kornia==0.3.1
+torch_optimizer==0.0.1a12
+opencv-python==4.2.0.34
+jsonargparse
+chumpy==0.69
+pyrender==0.1.39
+trimesh==3.6.18
+smplx==0.1.14
+tensorboard==2.2.1
+dlib
+scikit-learn==0.22.2.post1
+matplotlib==3.2.1q

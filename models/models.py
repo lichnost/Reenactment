@@ -2,9 +2,9 @@ import functools
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .losses import HeatmapLoss, GPLoss
+from .losses import GPLoss
 from utils.train_eval_utils import get_heatmap_gray, calc_heatmap_loss_gp
-from kornia.filters import Laplacian, Sobel
+from kornia.filters import Laplacian, Sobel, GaussianBlur2d
 
 class Bottleneck(nn.Module):
     expansion = 4
@@ -314,13 +314,11 @@ class MessagePassing(nn.Module):
 
 class Estimator(nn.Module):
 
-    def __init__(self, gp_loss_lambda=0.8, stacks=4, msg_pass=1):
+    def __init__(self, stacks=4, msg_pass=1):
         super(Estimator, self).__init__()
-        self.gp_loss_lambda = gp_loss_lambda
         self.stacks = stacks
         self.msg_pass = msg_pass
         self.gp_loss = GPLoss()
-        self.hm_loss = HeatmapLoss()
         self.conv1 = nn.Conv2d(1, 64, padding=3, kernel_size=7,
                                stride=2, bias=False)
         self.conv1_bn = nn.BatchNorm2d(64)
@@ -417,17 +415,13 @@ class Estimator(nn.Module):
         return heatmaps  # 每一个stack的输出heatmap经过append
 
     def calc_loss(self, pred_heatmaps, gt_heatmap):
-        heatmap_loss = []
         gradientprof_loss = []
         for stack in range(self.stacks):
-            heatmap_loss.append(self.hm_loss(pred_heatmaps[stack], gt_heatmap))
             gradientprof_loss.append(calc_heatmap_loss_gp(self.gp_loss, pred_heatmaps[stack], gt_heatmap))
-        heatmap_loss = torch.stack(heatmap_loss, dim=0)
-        heatmap_loss = torch.sum(heatmap_loss)
 
         gradientprof_loss = torch.stack(gradientprof_loss, dim=0)
         gradientprof_loss = torch.sum(gradientprof_loss)
-        return heatmap_loss + self.gp_loss_lambda * gradientprof_loss
+        return gradientprof_loss
 
 
 class Regressor(nn.Module):
@@ -826,6 +820,25 @@ class PCA(nn.Module):
     def forward(self, x):
         return self.pca(x)
 
+    def load_parameters(self, components, mean, inverse=False):
+        '''
+        Load from PCA components and mean.
+        :param components: components
+        :param mean: means
+        '''
+        components = torch.FloatTensor(components)
+        mean = torch.FloatTensor(mean)
+        if inverse:
+            weight = components.t()
+            bias = mean
+        else:
+            weight = components
+            bias = components.matmul(mean) * -1
+
+        data = {'pca.0.weight': weight,
+                'pca.0.bias': bias}
+        self.load_state_dict(data)
+
 
 # Define a resnet block
 class ResnetBlock(nn.Module):
@@ -1057,8 +1070,9 @@ class Edge(nn.Module):
         layers = []
         # layers.append(nn.Conv2d(1, 1, 3, padding = 1, bias=False))
         # layers.append(nn.Conv2d(1, 1, 3, padding = 1, bias=False))
+        layers.append(GaussianBlur2d((5, 5), (1.5, 1.5)))
         layers.append(Sobel(normalized=True))
-        layers.append(Laplacian(3, normalized=True))
+        # layers.append(Laplacian(7, normalized=True))
         self.edge = nn.Sequential(*layers)
 
 

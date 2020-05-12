@@ -78,46 +78,6 @@ def main(arg):
                         pred_heatmaps = estimator(input_face)
                         pred_coords = regressor(input_face, pred_heatmaps[-1].detach()).detach().cpu().squeeze().numpy()
 
-                        # for kp_index in range(kp_num[use_dataset]):
-                        #     cv2.circle(
-                        #         face_img,
-                        #         (int(pred_coords[2 * kp_index]), int(pred_coords[2 * kp_index + 1])),
-                        #         2,
-                        #         (0, 0, 255),
-                        #         -1
-                        #     )
-                        # show_img(face_img, 'face_small_keypoint'+str(face_i), 500, 650, keep=True)
-                        # if save_imgs:
-                        #     cv2.imwrite('./pics/face_' + t + '_0.png', face_img)
-                        #
-                        # heatmaps = F.interpolate(
-                        #     pred_heatmaps[-1],
-                        #     scale_factor=4,
-                        #     mode='bilinear',
-                        #     align_corners=True
-                        # )
-                        # heatmaps = heatmaps.squeeze(0).detach().cpu().numpy()
-                        # heatmaps_sum = heatmaps[0]
-                        # for heatmaps_index in range(boundary_num - 1):
-                        #     heatmaps_sum += heatmaps[heatmaps_index + 1]
-
-                        # plt.axis('off')
-                        # plt.imshow(heatmaps_sum, interpolation='nearest', vmax=1., vmin=0.)
-                        #
-                        # fig = plt.gcf()
-                        # fig.set_size_inches(2.56 / 3, 2.56 / 3)
-                        # plt.gca().xaxis.set_major_locator(plt.NullLocator())
-                        # plt.gca().yaxis.set_major_locator(plt.NullLocator())
-                        # plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
-                        # plt.margins(0, 0)
-                        #
-                        # fig.canvas.draw()
-                        # hm = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
-                        # hm = hm.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-                        # hm = cv2.resize(hm, face_img.shape[:2])
-                        # syn = cv2.addWeighted(face_img, 0.4, hm, 0.6, 0)
-                        # show_img(syn, 'face_small_boundary'+str(face_i), 900, 650, keep=True)
-
                         pred_coords_copy = copy.deepcopy(pred_coords)
                         for i in range(kp_num[arg.dataset]):
                             pred_coords_copy[2 * i] = \
@@ -126,12 +86,24 @@ def main(arg):
                                         bbox[3] - bbox[1])
                         face_keypoint_coords.append(pred_coords_copy)
 
-                if len(face_keypoint_coords) != 0:
-                    for face_id, coords in enumerate(face_keypoint_coords):
-                        for kp_index in range(kp_num[arg.dataset]):
-                            img = draw_circle(img, (int(coords[2 * kp_index]), int(coords[2 * kp_index + 1])))
-                    show_img(img, 'face_whole', wait=1, keep=True)
-                    face_keypoint_coords = []
+                if arg.eval_visual:
+
+                    heatmap_show = get_heatmap_gray(pred_heatmaps[-1]).detach().cpu().numpy()
+                    heatmap_show = (
+                            255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
+                    heatmap_show = np.moveaxis(heatmap_show, 0, -1)
+                    heatmap_show = cv2.resize(heatmap_show, (256, 256))
+
+                    show_img(heatmap_show, 'heatmap', wait=1, keep=True)
+
+                    if len(face_keypoint_coords) != 0:
+                        for face_id, coords in enumerate(face_keypoint_coords):
+                            for kp_index in range(kp_num[arg.dataset]):
+                                img = draw_circle(img, (int(coords[2 * kp_index]), int(coords[2 * kp_index + 1])))
+                        show_img(img, 'face_whole', wait=1, keep=True)
+
+
+                face_keypoint_coords = []
 
             if k == ord('q') or k == ord('Q'):
                 break

@@ -1,4 +1,4 @@
-import argparse
+from jsonargparse import ArgumentParser, ActionConfigFile
 from utils import dataset_info
 
 def str2bool(v):
@@ -11,9 +11,11 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
-parser = argparse.ArgumentParser(description='LAB')
 
-parser.add_argument('--gt_heatmaps',        default=False,             type=str2bool)
+parser = ArgumentParser(description='LAB')
+parser.add_argument('--cfg', action=ActionConfigFile)
+
+parser.add_argument('--regressor_only',        default=False,             type=str2bool)
 parser.add_argument('--save_logs',          default=False,             type=str2bool)
 
 # dlib
@@ -31,28 +33,30 @@ parser.add_argument('--type',               default='train',             type=st
 
 # dataloader
 parser.add_argument('--crop_size',          default=256,                 type=int)
-parser.add_argument('--batch_size',         default=14,                   type=int) # not gt_heatmaps 14, gt_heatmaps 230
+parser.add_argument('--batch_size',         default=14,                   type=int) # not gt_heatmaps 14, gt_heatmaps 230,
 parser.add_argument('--workers',            default=8,                   type=int)
 parser.add_argument('--shuffle',            default=True,                type=str2bool)
-parser.add_argument('--PDB',                default=False,                type=str2bool) # not gt_heatmaps False, gt_heatmaps True
+parser.add_argument('--PDB',                default=False,                type=str2bool) # not gt_heatmaps False, gt_heatmaps True, transformer_preliminary_no_GAN=60, transformer_fine__GAN=60
 parser.add_argument('--RGB',                default=False,                type=str2bool)
-parser.add_argument('--trans_ratio',        default=0.2,                 type=float) # boundary=0.2
-parser.add_argument('--rotate_limit',       default=45.,                 type=float) # boundary=45.
-parser.add_argument('--scale_ratio_up',     default=0.1,                 type=float) # boundary=0.2
-parser.add_argument('--scale_ratio_down',   default=0.2,                 type=float) # boundary=0.4
-parser.add_argument('--scale_vertical',     default=0.2,                 type=float) # boundary=0.2
-parser.add_argument('--scale_horizontal',   default=0.2,                 type=float) # boundary=0.2
+parser.add_argument('--trans_ratio',        default=0.0,                 type=float) # boundary=0.2, decoder=0.0, transformer=0.0
+parser.add_argument('--rotate_limit',       default=0.0,                 type=float) # boundary=45., decoder=0.0, transformer=0.0
+parser.add_argument('--scale_ratio_up',     default=0.1,                 type=float) # boundary=0.2, decoder=0.1, transformer=0.1
+parser.add_argument('--scale_ratio_down',   default=0.1,                 type=float) # boundary=0.4, decoder=0.1, transformer=0.1
+parser.add_argument('--scale_vertical',     default=0.0,                 type=float) # boundary=0.2, decoder=0.0, transformer=0.0
+parser.add_argument('--scale_horizontal',   default=0.0,                 type=float) # boundary=0.2, decoder=0.0, transformer=0.0
 
 # devices
 parser.add_argument('--cuda',               default=True,                type=str2bool)
 parser.add_argument('--gpu_id',             default='0',                 type=str)
 
 # learning parameters
-parser.add_argument('--optimizer',          default='Yogi',          type=str,
-                    choices=['Lamb', 'SGD', 'Adam', 'Yogi'])
+parser.add_argument('--optimizer',          default='Adam',          type=str,
+                    choices=['Lamb', 'SGD', 'Adam', 'Yogi', 'AdaBound', 'DiffGrad'])
 parser.add_argument('--momentum',           default=0.1,                 type=float)
 parser.add_argument('--weight_decay',       default=0,                type=float) # decoder=0
-parser.add_argument('--lr',                 default=1e-4,                type=float) # decoder=2e-2
+parser.add_argument('--weight_decay_discrim',       default=0.9,                type=float) # decoder=0, transformer_fine=0.9
+parser.add_argument('--lr',                 default=5e-5,                type=float) # decoder=2e-2, transformer_preliminary=5e-4, transformer_fine=5e-5
+parser.add_argument('--lr_discrim',                 default=5e-6,                type=float) # transformer_fine=5e-6
 parser.add_argument('--gamma',              default=0.2,                 type=float)
 parser.add_argument('--step_values',        default=[],        type=list)
 parser.add_argument('--max_epoch',          default=1500,                type=int)
@@ -62,9 +66,9 @@ parser.add_argument('--boundary_cutoff_lambda',          default=0.4,           
 
 # losses setting
 parser.add_argument('--loss_type',          default='L1',          type=str,
-                    choices=['L1', 'L2', 'smoothL1', 'wingloss', 'adaptiveWingloss']) # boundary=wingloss, transformer=L1
+                    choices=['L1', 'L2', 'smoothL1', 'wingloss']) # boundary=wingloss, transformer=L1
 parser.add_argument('--gp_loss',     default=True,                type=str2bool)
-parser.add_argument('--loss_gp_lambda',     default=1.,                 type=float) # decoder=10. transformer=5.
+parser.add_argument('--loss_gp_lambda',     default=5.0,                 type=float) # decoder=10. transformer_preliminary=10., transformer_fine=5.0
 parser.add_argument('--cp_loss',     default=False,                type=str2bool)
 parser.add_argument('--loss_cp_lambda',     default=0.01,                 type=float) # decoder=0.01
 parser.add_argument('--wingloss_omega',         default=10,                  type=float)
@@ -79,12 +83,12 @@ parser.add_argument('--feature_loss_type',          default='relu2_2_and_relu3_3
 parser.add_argument('--loss_feature_lambda',     default=10.,                type=float)
 parser.add_argument('--loss_pixel_lambda',     default=100.,                type=float)
 parser.add_argument('--loss_discrim_lambda',     default=5.0,                type=float) # transformer=1.0
-# parser.add_argument('--loss_cycle_lambda',     default=1.0,                type=float) # transformer=10.0
-parser.add_argument('--loss_pca_lambda',     default=10.,                type=float) # transformer=10.0
+parser.add_argument('--loss_pca_lambda',     default=100.,                type=float) # transformer_preliminary=0.1, transformer_fine=100.
 
 # pca
-parser.add_argument('--pca_components',          default=20,                type=int)
-parser.add_argument('--pca_used_components',     default=3,                type=int)
+parser.add_argument('--pca_components',          default=196,                type=int)
+parser.add_argument('--pca_used_components',     default=10,                type=int)
+parser.add_argument('--pca_inverse',     default=False,                type=str2bool)
 
 # resume training parameters
 parser.add_argument('--resume_epoch',       default=0,                   type=int)
@@ -92,12 +96,12 @@ parser.add_argument('--resume_folder',      default='./weights/checkpoints/',  t
 
 # model saving parameters
 parser.add_argument('--save_folder',        default='./weights/',        type=str)
-parser.add_argument('--save_interval',      default=10,                 type=int)
+parser.add_argument('--save_interval',      default=1,                 type=int)
 
 # model setting
 parser.add_argument('--hour_stack',         default=4,                   type=int)
 parser.add_argument('--msg_pass',           default=True,                type=str2bool)
-parser.add_argument('--GAN',                default=True,                type=str2bool) # decoder=False
+parser.add_argument('--GAN',                default=False,                type=str2bool) # decoder=False, transformer_preliminary=False, transformer_fine=False
 parser.add_argument('--fuse_stage',         default=4,                   type=int)
 parser.add_argument('--sigma',              default=1.0,                 type=float)
 parser.add_argument('--theta',              default=1.5,                 type=float)
@@ -108,25 +112,33 @@ parser.add_argument('--video_path',         default=None,                 type=s
 
 # evaluate parameters
 parser.add_argument('--eval_dataset_regressor',       default='WFLW',              type=str)
-parser.add_argument('--eval_dataset_decoder',       default='WFLW',              type=str)
-parser.add_argument('--eval_dataset_pca',       default='WFLW',              type=str)
+parser.add_argument('--eval_dataset_decoder',       default='Faces',              type=str)
+parser.add_argument('--eval_dataset_transformer',       default='Faces',              type=str)
+parser.add_argument('--eval_dataset_pca',       default='Faces',              type=str)
+parser.add_argument('--eval_split_pca',       default='Adush',              type=str)
+parser.add_argument('--eval_split_source_pca',       default='PavelSemenov',              type=str)
 parser.add_argument('--eval_dataset_align',       default='WFLW',              type=str)
-parser.add_argument('--eval_split_decoder',         default='PavelSemenov',              type=str)
+parser.add_argument('--eval_split_decoder',         default='Adush',              type=str)
+parser.add_argument('--eval_split_source_transformer',         default='PavelSemenov',              type=str)
+parser.add_argument('--eval_split_transformer',         default='Adush',              type=str)
 parser.add_argument('--eval_epoch_estimator',         default=960,                 type=int)
 parser.add_argument('--eval_epoch_regressor',         default=960,                 type=int)
 parser.add_argument('--eval_epoch_boundary_discriminator',     default=960,                 type=int)
 parser.add_argument('--eval_epoch_decoder',          default=85,                 type=int)
 parser.add_argument('--eval_epoch_decoder_discriminator',     default=85,                 type=int)
-parser.add_argument('--eval_epoch_pca',          default=150000,                 type=int)
 parser.add_argument('--eval_epoch_align',          default=350,                 type=int)
+parser.add_argument('--eval_epoch_transformer',          default=40,                 type=int)
 parser.add_argument('--max_threshold',      default=0.1,                 type=float)
 parser.add_argument('--norm_way',           default='inter_ocular',      type=str,
                     choices=['inter_pupil', 'inter_ocular', 'face_size'])
 parser.add_argument('--eval_visual',        default=True ,               type=str2bool)
-parser.add_argument('--save_img',           default=False,                type=str2bool)
+parser.add_argument('--save_img',           default=True,                type=str2bool)
 parser.add_argument('--realtime',           default=True,              type=str2bool)
 parser.add_argument('--normalized_bbox',    default=True,              type=str2bool)
+parser.add_argument('--normalize_face_size', default=0.4,              type=float)
+parser.add_argument('--normalize_top_shift', default=0.5,              type=float)
 parser.add_argument('--eval_video_path',       default=None,              type=str)
+
 
 def parse_args():
     result = parser.parse_args()
@@ -139,3 +151,4 @@ def parse_args():
     result.dataset_route = dataset_info.init_dataset_route(result.dataset_route)
 
     return result
+

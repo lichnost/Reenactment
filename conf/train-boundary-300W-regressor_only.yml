@@ -1,0 +1,39 @@
+dataset: 300W
+split: train
+type: train
+
+regressor_only: True
+crop_size: 256
+batch_size: 6
+shuffle: True
+PDB: True
+RGB: False
+trans_ratio: 0.2
+rotate_limit: 45.0
+scale_ratio_up: 0.2
+scale_ratio_down: 0.4
+scale_vertical: 0.2
+scale_horizontal: 0.2
+
+cuda: True
+gpu_id: 0
+
+optimizer: Yogi
+momentum: 0.
+weight_decay: 0.
+lr: 1e-3
+
+loss_gp_lambda: 0.001
+
+wingloss_omega: 14.0
+wingloss_epsilon: 1.0
+wingloss_theta: 0.5
+wingloss_alpha: 2.1
+
+loss_type: wingloss
+
+resume_epoch: 204
+
+eval_epoch_estimator: 1123
+
+save_logs: True

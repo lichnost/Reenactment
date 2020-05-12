@@ -9,6 +9,7 @@ from torch.optim import lr_scheduler
 from kornia.geometry.transform import warp_affine
 from torch.nn import init
 import math
+import os
 
 def get_devices_list(arg):
     devices_list = [torch.device('cpu')]
@@ -40,8 +41,7 @@ def create_model_estimator(arg, devices_list, eval=False):
     from models import Estimator
     resume_epoch = arg.eval_epoch_estimator if eval else arg.resume_epoch
 
-    estimator = Estimator(gp_loss_lambda=arg.loss_gp_lambda,
-                          stacks=arg.hour_stack, msg_pass=arg.msg_pass)
+    estimator = Estimator(stacks=arg.hour_stack, msg_pass=arg.msg_pass)
 
     if resume_epoch > 0:
         load_path = arg.resume_folder + 'estimator_' + str(resume_epoch) + '.pth'
@@ -59,7 +59,7 @@ def create_model_regressor(arg, devices_list, eval=False):
     resume_dataset = arg.eval_dataset_regressor if eval else arg.dataset
     resume_epoch = arg.eval_epoch_regressor if eval else arg.resume_epoch
 
-    regressor = Regressor(fuse_stages=arg.fuse_stage, output=2*kp_num[arg.dataset])
+    regressor = Regressor(fuse_stages=arg.fuse_stage, output=2*kp_num[resume_dataset])
 
     if resume_epoch > 0:
         load_path = arg.resume_folder + resume_dataset+'_regressor_' + str(resume_epoch) + '.pth'
@@ -131,17 +131,26 @@ def create_model_decoder(arg, devices_list, eval=False):
     return decoder
 
 
-def create_model_pca(arg, devices_list, eval=False):
+def create_model_pca(arg, devices_list, eval=False, inverse=False):
     from models import PCA
     resume_dataset = arg.eval_dataset_pca if eval else arg.dataset
-    resume_epoch = arg.eval_epoch_pca if eval else arg.resume_epoch
+    resume_split = arg.eval_split_pca if eval else arg.split
+    resume_split_source = arg.eval_split_source_pca if eval else arg.split_source
 
     pca = PCA(in_size=2*kp_num[arg.dataset], pca_size=arg.pca_components)
 
-    if resume_epoch > 0:
-        load_path = arg.resume_folder + resume_dataset+'_pca_' + str(resume_epoch) + '.pth'
-        print('Loading PCA from ' + load_path)
-        pca = load_weights(pca, load_path, devices_list[0])
+    suffix = '_pca_inverse' if inverse else '_pca'
+
+    load_path_first = arg.resume_folder + resume_dataset + '_' + resume_split + '+' + resume_split_source + suffix + '.pth'
+    load_path_second = arg.resume_folder + resume_dataset + '_' + resume_split_source + '+' + resume_split + suffix + '.pth'
+
+    if os.path.exists(load_path_first):
+        print('Loading PCA from ' + load_path_first)
+        pca = load_weights(pca, load_path_first, devices_list[0])
+
+    if os.path.exists(load_path_second):
+        print('Loading PCA from ' + load_path_second)
+        pca = load_weights(pca, load_path_second, devices_list[0])
 
     if arg.cuda:
         pca = pca.cuda(device=devices_list[0])
@@ -151,10 +160,10 @@ def create_model_pca(arg, devices_list, eval=False):
 
 def create_model_transformer_a2b(arg, devices_list, eval=False):
     from models import Transformer
-    resume_dataset = arg.eval_dataset_pca if eval else arg.dataset
-    resume_a = arg.eval_split_source_trasformer if eval else arg.split_source
-    resume_b = arg.eval_split_trasformer if eval else arg.split
-    resume_epoch = arg.eval_epoch_pca if eval else arg.resume_epoch
+    resume_dataset = arg.eval_dataset_transformer if eval else arg.dataset
+    resume_a = arg.eval_split_source_transformer if eval else arg.split_source
+    resume_b = arg.eval_split_transformer if eval else arg.split
+    resume_epoch = arg.eval_epoch_transformer if eval else arg.resume_epoch
 
     transformer = Transformer(in_channels=boundary_num, out_channels=boundary_num)
 
@@ -174,10 +183,10 @@ def create_model_transformer_a2b(arg, devices_list, eval=False):
 
 def create_model_transformer_b2a(arg, devices_list, eval=False):
     from models import Transformer
-    resume_dataset = arg.eval_dataset_pca if eval else arg.dataset
+    resume_dataset = arg.eval_dataset_transformer if eval else arg.dataset
     resume_b = arg.eval_split_source_trasformer if eval else arg.split_source
     resume_a = arg.eval_split_trasformer if eval else arg.split
-    resume_epoch = arg.eval_epoch_pca if eval else arg.resume_epoch
+    resume_epoch = arg.eval_epoch_transformer if eval else arg.resume_epoch
 
     transformer = Transformer(in_channels=boundary_num, out_channels=boundary_num)
 
@@ -398,34 +407,50 @@ def coord_transform(xy, crop_matrix):
             crop_matrix[1][0] * xy[0] + crop_matrix[1][1] * xy[1] + crop_matrix[1][2])
 
 
-def create_optimizer(arg, parameters, create_scheduler=False):
+def create_optimizer(arg, parameters, create_scheduler=False, discrim=False):
+    lr = arg.lr_discrim if discrim else arg.lr
+    weight_decay = arg.weight_decay_discrim if discrim else arg.weight_decay
     if arg.optimizer == 'Lamb':
         optimizer = optim.Lamb(
             parameters,
-            lr=arg.lr,
-            weight_decay=arg.weight_decay,
+            lr=lr,
+            weight_decay=weight_decay,
+            betas=(0.5, 0.999)
+        )
+    elif arg.optimizer == 'AdaBound':
+        optimizer = optim.AdaBound(
+            parameters,
+            lr=lr,
+            weight_decay=weight_decay,
             betas=(0.5, 0.999)
         )
     elif arg.optimizer == 'Yogi':
         optimizer = optim.Yogi(
             parameters,
-            lr=arg.lr,
-            weight_decay=arg.weight_decay,
+            lr=lr,
+            weight_decay=weight_decay,
+            betas=(0.5, 0.999)
+        )
+    elif arg.optimizer == 'DiffGrad':
+        optimizer = optim.DiffGrad(
+            parameters,
+            lr=lr,
+            weight_decay=weight_decay,
             betas=(0.5, 0.999)
         )
     elif arg.optimizer == 'Adam':
         optimizer = torch.optim.Adam(
             parameters,
-            lr=arg.lr,
-            weight_decay=arg.weight_decay,
+            lr=lr,
+            weight_decay=weight_decay,
             betas=(0.5, 0.999)
         )
     else:
         optimizer = torch.optim.SGD(
             parameters,
-            lr=arg.lr,
+            lr=lr,
             momentum=arg.momentum,
-            weight_decay=arg.weight_decay
+            weight_decay=weight_decay
         )
 
     if create_scheduler:

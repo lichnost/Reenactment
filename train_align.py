@@ -6,7 +6,7 @@ from kornia.color import denormalize, normalize, rgb_to_grayscale, rgb_to_bgr
 from kornia import tensor_to_image
 from torch.utils.tensorboard import SummaryWriter
 
-from models import GPLoss, CPLoss, WingLoss, AdaptiveWingLoss, FeatureLoss
+from models import GPLoss, CPLoss, WingLoss, AWingLoss, FeatureLoss
 from utils import *
 from utils.args import parse_args
 from utils.dataset import GeneralDataset
@@ -75,8 +75,8 @@ def train(arg):
     elif arg.loss_type == 'wingloss':
         criterion = WingLoss(omega=arg.wingloss_omega, epsilon=arg.wingloss_epsilon)
     else:
-        criterion = AdaptiveWingLoss(arg.wingloss_omega, theta=arg.wingloss_theta, epsilon=arg.wingloss_epsilon,
-                                     alpha=arg.wingloss_alpha)
+        criterion = AWingLoss(arg.wingloss_omega, theta=arg.wingloss_theta, epsilon=arg.wingloss_epsilon,
+                              alpha=arg.wingloss_alpha)
     if arg.cuda:
         criterion = criterion.cuda(device=devices[0])
 
@@ -121,15 +121,19 @@ def train(arg):
             show_img(tensor_to_image(input_images[0]))
 
             heatmap_sum = np.uint8(get_heatmap_gray(heatmaps[0].unsqueeze(0), denorm=True).detach().squeeze().cpu().numpy())
+            heatmap_sum = np.moveaxis(np.tile(heatmap_sum, [3, 1, 1]), 0, -1)
+            heatmap_sum[:, :, 1:2] = 0
             gt_coords_xy = gt_coords_xy[0].detach().cpu().squeeze().numpy()
             for i in range(0, 2*kp_num[arg.dataset], 2):
-                draw_circle(heatmap_sum, (int(gt_coords_xy[i]), int(gt_coords_xy[i+1])))
+                draw_circle(heatmap_sum, (int(gt_coords_xy[i]), int(gt_coords_xy[i+1])), color=(255, 255, 255))
             show_img(cv2.resize(heatmap_sum, (256, 256)))
 
             heatmap_sum = np.uint8(get_heatmap_gray(heatmaps[0].unsqueeze(0), denorm=True).detach().squeeze().cpu().numpy())
-            coords_predict = coords_predict.detach().cpu().squeeze().numpy()
+            heatmap_sum = np.moveaxis(np.tile(heatmap_sum, [3, 1, 1]), 0, -1)
+            heatmap_sum[:, :, 1:2] = 0
+            coords_predict = coords_predict[0].detach().cpu().squeeze().numpy()
             for i in range(0, 2 * kp_num[arg.dataset], 2):
-                draw_circle(heatmap_sum, (int(coords_predict[i]), int(coords_predict[i + 1])))
+                draw_circle(heatmap_sum, (int(coords_predict[i]), int(coords_predict[i + 1])), color=(255, 255, 255))
             show_img(cv2.resize(heatmap_sum, (256, 256)))
 
 

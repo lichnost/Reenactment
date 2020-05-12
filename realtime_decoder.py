@@ -25,6 +25,12 @@ def main(arg):
         regressor = create_model_regressor(arg, devices, eval=True)
         regressor.eval()
 
+    transformer = create_model_transformer_a2b(arg, devices, eval=True)
+    transformer.eval()
+
+    edge = create_model_edge(arg, devices, eval=True)
+    edge.eval()
+
     decoder = create_model_decoder(arg, devices, eval=True)
     decoder.eval()
 
@@ -48,7 +54,7 @@ def main(arg):
         if ret is True:        # If the camera reads the image successfully
 
             # if arg.eval_visual:
-            #     show_img(img, 'source', wait=1, keep=True)
+            show_img(img, 'source', wait=1, keep=True)
 
             k = cv2.waitKey(1)
             if arg.realtime or k == ord('c') or k == ord('C'):
@@ -84,7 +90,7 @@ def main(arg):
                             heatmaps = F.interpolate(heatmaps, arg.crop_size, mode='bicubic')
                             heatmaps = warp_affine(heatmaps, inv_crop_matrix, (img.shape[0], img.shape[1]), padding_mode='border')
 
-                            norm_bbox = normalized_bbox(coords, arg.dataset, face_size=0.4)
+                            norm_bbox = normalized_bbox(coords, arg.dataset, face_size=arg.normalize_face_size, top_shift=arg.normalize_top_shift)
                             position_before = np.float32([
                                 [int(norm_bbox[0]), int(norm_bbox[1])],
                                 [int(norm_bbox[0]), int(norm_bbox[3])],
@@ -126,9 +132,11 @@ def main(arg):
                             heatmaps_orig = estimator(input_face)
                             heatmaps = heatmaps_orig[-1]
 
+                        # heatmaps = transformer(heatmaps)
 
                         # heatmaps = F.interpolate(heatmaps, arg.crop_size, mode='bicubic')
-                        heatmaps[heatmaps < arg.boundary_cutoff_lambda * heatmaps.max()] = 0
+                        heatmaps = edge(heatmaps)
+                        # heatmaps[heatmaps < arg.boundary_cutoff_lambda * heatmaps.max()] = 0
 
                         fake_image_norm = decoder(heatmaps).detach()
                         fake_image = denormalize(fake_image_norm, mean, std).cpu().squeeze().numpy()
@@ -138,11 +146,13 @@ def main(arg):
                         if arg.eval_visual:
                             show_img(fake_image, 'target', wait=1, keep=True)
 
-                            # heatmap_show = get_heatmap_gray(heatmaps).detach().cpu().numpy()
-                            # heatmap_show = (
-                            #         255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
-                            # heatmap_show = np.moveaxis(heatmap_show, 0, -1)
-                            # show_img(heatmap_show, 'heatmap', wait=1, keep=True)
+                            heatmap_show = get_heatmap_gray(heatmaps).detach().cpu().numpy()
+                            heatmap_show = (
+                                    255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
+                            heatmap_show = np.moveaxis(heatmap_show, 0, -1)
+                            heatmap_show = cv2.resize(heatmap_show, (256, 256))
+
+                            show_img(heatmap_show, 'heatmap', wait=1, keep=True)
 
 
             if k == ord('q') or k == ord('Q'):
