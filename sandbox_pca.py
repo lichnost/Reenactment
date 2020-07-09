@@ -7,7 +7,7 @@ from sklearn.neighbors import KDTree
 
 from utils import *
 from utils.args import parse_args
-from utils.dataset import ShapeDataset
+from utils.dataset import ShapePCADataset
 import cv2
 from utils.pdb import procrustes
 from models import PCA as PCAModule

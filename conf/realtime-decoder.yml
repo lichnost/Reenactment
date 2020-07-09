@@ -1,0 +1,23 @@
+type: eval
+cuda: True
+gpu_id: 0
+
+eval_epoch_estimator: 960
+
+normalized_bbox: True
+normalize_face_size: 0.4
+normalize_top_shift: 0.5
+
+eval_dataset_regressor: WFLW
+eval_epoch_regressor: 960
+
+eval_dataset_transformer: Faces
+eval_split_source_transformer: PavelSemenov
+eval_split_transformer: Adush
+eval_epoch_transformer: 165
+
+eval_dataset_decoder: Faces
+eval_split_decoder: Adush
+eval_epoch_decoder: 110
+
+#eval_video_path: /home/lichnost/Видео/Adush_EDIT3.mp4

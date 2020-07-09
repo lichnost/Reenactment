@@ -32,6 +32,14 @@ import pickle
 from smplx.lbs import lbs, batch_rodrigues, vertices2landmarks, find_dynamic_lmk_idx_and_bcoords
 from smplx.utils import Struct, to_tensor, to_np, rot_mat_to_euler
 
+from types import SimpleNamespace
+
+from pytorch3d.structures import Meshes, Textures
+from pytorch3d.renderer import OpenGLOrthographicCameras, OpenGLPerspectiveCameras, look_at_view_transform,\
+    RasterizationSettings, BlendParams, MeshRenderer, MeshRasterizer, HardPhongShader, HardFlatShader,\
+    SoftSilhouetteShader, TexturedSoftPhongShader, PointLights
+
+from utils.train_eval_utils import generate_random
 
 class FLAME(nn.Module):
     """
@@ -156,51 +164,6 @@ class FLAME(nn.Module):
             self.register_buffer('neck_kin_chain',
                                  torch.stack(neck_kin_chain))
 
-    def _find_dynamic_lmk_idx_and_bcoords(self, vertices, pose, dynamic_lmk_faces_idx,
-                                         dynamic_lmk_b_coords,
-                                         neck_kin_chain, dtype=torch.float32):
-        """
-            Selects the face contour depending on the reletive position of the head
-            Input:
-                vertices: N X num_of_vertices X 3
-                pose: N X full pose
-                dynamic_lmk_faces_idx: The list of contour face indexes
-                dynamic_lmk_b_coords: The list of contour barycentric weights
-                neck_kin_chain: The tree to consider for the relative rotation
-                dtype: Data type
-            return:
-                The contour face indexes and the corresponding barycentric weights
-            Source: Modified for batches from https://github.com/vchoutas/smplx
-        """
-
-        batch_size = vertices.shape[0]
-
-        aa_pose = torch.index_select(pose.view(batch_size, -1, 3), 1,
-                                     neck_kin_chain)
-        rot_mats = batch_rodrigues(
-            aa_pose.view(-1, 3), dtype=dtype).view(batch_size, -1, 3, 3)
-
-        rel_rot_mat = torch.eye(3, device=vertices.device,
-                                dtype=dtype).unsqueeze_(dim=0).expand(batch_size, -1, -1)
-        for idx in range(len(neck_kin_chain)):
-            rel_rot_mat = torch.bmm(rot_mats[:, idx], rel_rot_mat)
-
-        y_rot_angle = torch.round(
-            torch.clamp(-rot_mat_to_euler(rel_rot_mat) * 180.0 / np.pi,
-                        max=39)).to(dtype=torch.long)
-        neg_mask = y_rot_angle.lt(0).to(dtype=torch.long)
-        mask = y_rot_angle.lt(-39).to(dtype=torch.long)
-        neg_vals = mask * 78 + (1 - mask) * (39 - y_rot_angle)
-        y_rot_angle = (neg_mask * neg_vals +
-                       (1 - neg_mask) * y_rot_angle)
-
-        dyn_lmk_faces_idx = torch.index_select(dynamic_lmk_faces_idx,
-                                               0, y_rot_angle)
-        dyn_lmk_b_coords = torch.index_select(dynamic_lmk_b_coords,
-                                              0, y_rot_angle)
-
-        return dyn_lmk_faces_idx, dyn_lmk_b_coords
-
     def forward(self, shape_params=None, expression_params=None, pose_params=None, neck_pose=None, eye_pose=None, transl=None):
         """
             Input:
@@ -229,7 +192,7 @@ class FLAME(nn.Module):
             self.batch_size, 1, 1)
         if self.use_face_contour:
 
-            dyn_lmk_faces_idx, dyn_lmk_bary_coords = self._find_dynamic_lmk_idx_and_bcoords(
+            dyn_lmk_faces_idx, dyn_lmk_bary_coords = find_dynamic_lmk_idx_and_bcoords(
                 vertices, full_pose, self.dynamic_lmk_faces_idx,
                 self.dynamic_lmk_bary_coords,
                 self.neck_kin_chain, dtype=self.dtype)
@@ -247,3 +210,172 @@ class FLAME(nn.Module):
             vertices += transl.unsqueeze(dim=1)
 
         return vertices, landmarks
+
+
+def get_flame_layer(flame_model_path: str, static_landmark_embedding_path: str, dynamic_landmark_embedding_path: str,
+                    batch_size: int=1, shape_params: int=100, expression_params: int=50, pose_params: int=7,
+                    use_3D_translation: bool = False):
+    flame_conf = SimpleNamespace()
+    flame_conf.flame_model_path = flame_model_path
+    flame_conf.use_face_contour = True
+    flame_conf.batch_size = batch_size
+    flame_conf.shape_params = shape_params
+    flame_conf.expression_params = expression_params
+    flame_conf.pose_params = pose_params
+    flame_conf.use_3D_translation = False
+    flame_conf.static_landmark_embedding_path = static_landmark_embedding_path
+    flame_conf.dynamic_landmark_embedding_path = dynamic_landmark_embedding_path
+
+    flame = FLAME(flame_conf)
+    return flame
+
+
+def random_shape_params():
+    ranges = np.zeros((100, 2))
+    ranges[:, 0] = -2.0
+    ranges[:, 1] = 2.0
+    return generate_random(ranges)
+
+
+def random_expression_params():
+    ranges = np.array([
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0],
+        [-2.0, 2.0]
+    ])
+    return generate_random(ranges)
+
+
+def random_pose_params():
+    radian = np.pi/180.0
+    ranges = np.array([
+        [-20*radian, 20*radian],
+        [-30*radian, 30*radian],
+        [0.0, 0.0],
+        [0.0, 0.3],
+        [0.0, 0.0],
+        [0.0, 0.0]
+    ])
+    return generate_random(ranges)
+
+
+def random_neck_pose_params():
+    radian = np.pi/180.0
+    ranges = np.array([
+        [-25*radian, 25*radian],
+        [-70*radian, 70*radian],
+        [-30*radian, 30*radian]
+    ])
+    return generate_random(ranges)
+
+
+def random_cam_params():
+    ranges = np.array([
+        [-0.2, 0.2],
+        [-0.2, 0.2]
+    ])
+    return generate_random(ranges)
+
+
+def random_scale_params():
+    ranges = np.array([
+        [0.7, 1.3]
+    ])
+    return generate_random(ranges).item()
+
+
+def random_texture(texture_model, batch_size):
+    # FLAME texture model
+    texture_shape = texture_model['mean'].shape
+    texture_num_pc = texture_model['tex_dir'].shape[-1]
+    texture_mean = np.reshape(texture_model['mean'], (1, -1))
+    texture_dir = np.reshape(texture_model['tex_dir'], (-1, texture_num_pc)).T
+    texture_params = np.random.randn(texture_num_pc)[np.newaxis, :]
+    texture = np.reshape(np.add(texture_mean, np.matmul(texture_params, texture_dir)), texture_shape)
+    texture = texture / np.max(texture)
+
+    faces_uvs = texture_model['ft']
+    verts_uvs = texture_model['vt']
+
+    texture = torch.cat(batch_size * [torch.tensor(texture, dtype=torch.float32).unsqueeze(0)])
+    faces_uvs = torch.cat(batch_size * [torch.tensor(np.int64(faces_uvs), dtype=torch.int64).unsqueeze(0)])
+    verts_uvs = torch.cat(batch_size * [torch.tensor(np.float32(verts_uvs), dtype=torch.float32).unsqueeze(0)])
+
+    return texture, faces_uvs, verts_uvs
+
+
+def render_images(vertices, faces, texture, faces_uvs, verts_uvs, crop_size, device):
+    textures = Textures(maps=texture, faces_uvs=faces_uvs, verts_uvs=verts_uvs)
+    meshes = Meshes(vertices, faces, textures)
+
+    R, T = look_at_view_transform(1.0, 0.5, 0, device=device)
+    camera = OpenGLPerspectiveCameras(R=R, T=T, fov=20, device=device)
+
+    raster_settings = RasterizationSettings(
+        image_size=crop_size * 2,
+        blur_radius=0.0,
+        faces_per_pixel=1,
+        bin_size=None,
+        max_faces_per_bin=None
+    )
+
+    lights = PointLights(location=[[0.0, 0.0, -3.0]], device=device)
+
+    renderer = MeshRenderer(
+        rasterizer=MeshRasterizer(cameras=camera, raster_settings=raster_settings),
+        shader=TexturedSoftPhongShader(cameras=camera, device=device, lights=lights)
+    )
+
+    images = renderer(meshes)
+    return images

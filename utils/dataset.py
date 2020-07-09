@@ -13,6 +13,11 @@ from sklearn.decomposition import PCA
 from sklearn.neighbors import KDTree
 import torch
 import random
+import os
+import pickle
+
+from flame.FLAME import random_shape_params, random_pose_params, random_expression_params, random_neck_pose_params,\
+    random_cam_params, random_scale_params
 
 class OriginalImageDataset(data.Dataset):
 
@@ -32,7 +37,7 @@ class OriginalImageDataset(data.Dataset):
         return img
 
 
-class ShapeDataset(data.Dataset):
+class ShapePCADataset(data.Dataset):
 
     def __init__(self, arg, dataset, split, pca_components=20, trainset_sim=None):
         self.arg = arg
@@ -222,3 +227,56 @@ class DecoderDataset(data.Dataset):
         gt_coords_xy = get_gt_coords(dataset, affine_matrix, coord_x_cropped, coord_y_cropped)
 
         return pic_affine, pic_affine_orig_norm, gt_coords_xy
+
+
+class ShapeFlameDataset(data.Dataset):
+
+    def __init__(self, arg, dataset, split):
+        self.arg = arg
+        self.dataset = dataset
+        self.split = split
+        self.mean = arg.flame_dataset_mean_shape
+
+        self.list = get_annotations_list(self.arg.dataset_route, dataset, split, arg.crop_size, ispdb=arg.PDB)
+
+        self.shape_params = []
+        self.pose_params = []
+        self.expression_params = []
+        self.cam_params = []
+        self.mean_shape_params = None
+        self.load_flame_params()
+
+    def load_flame_params(self):
+        for i, item in enumerate(self.list):
+            path = os.path.join(self.arg.dataset_route[self.dataset], 'FLAME', self.split, 'params', os.path.splitext(os.path.split(item[-1])[-1])[0]) + os.path.extsep + 'npy'
+            params = np.load(path, allow_pickle=True, encoding='latin1').item()
+
+            self.shape_params.append(np.float32(params['shape']))
+            self.pose_params.append(np.float32(params['pose'][:6]))
+            self.expression_params.append(np.float32(np.append(params['expression'], 0.0)))
+            self.cam_params.append(np.float32(params['cam']))
+
+        self.mean_shape_params = np.mean(np.array(self.shape_params), axis=0)
+        if self.arg.flame_dataset_mean_shape:
+            self.shape_params = [self.mean_shape_params] * len(self.list)
+
+    def __len__(self):
+        return len(self.list)
+
+    def __getitem__(self, item):
+        scale = 1
+        if self.arg.flame_random_params:
+            shape = random_shape_params()
+            pose = random_pose_params()
+            neck_pose = random_neck_pose_params()
+            expression = random_expression_params()
+            cam = random_cam_params()
+            scale = random_scale_params()
+        else:
+            shape = self.shape_params[item]
+            pose = self.pose_params[item]
+            neck_pose = np.zeros((3), dtype=np.float32)
+            expression = self.expression_params[item]
+            cam = self.cam_params[item]
+
+        return self.list[item][-1], shape, pose, neck_pose, expression, cam, scale

@@ -96,7 +96,7 @@ parser.add_argument('--resume_folder',      default='./weights/checkpoints/',  t
 
 # model saving parameters
 parser.add_argument('--save_folder',        default='./weights/',        type=str)
-parser.add_argument('--save_interval',      default=1,                 type=int)
+parser.add_argument('--save_interval',      default=5,                 type=int)
 
 # model setting
 parser.add_argument('--hour_stack',         default=4,                   type=int)
@@ -121,8 +121,8 @@ parser.add_argument('--eval_dataset_align',       default='WFLW',              t
 parser.add_argument('--eval_split_decoder',         default='Adush',              type=str)
 parser.add_argument('--eval_split_source_transformer',         default='PavelSemenov',              type=str)
 parser.add_argument('--eval_split_transformer',         default='Adush',              type=str)
-parser.add_argument('--eval_epoch_estimator',         default=960,                 type=int)
-parser.add_argument('--eval_epoch_regressor',         default=960,                 type=int)
+parser.add_argument('--eval_epoch_estimator',         default=1123,                 type=int)
+parser.add_argument('--eval_epoch_regressor',         default=1123,                 type=int)
 parser.add_argument('--eval_epoch_boundary_discriminator',     default=960,                 type=int)
 parser.add_argument('--eval_epoch_decoder',          default=85,                 type=int)
 parser.add_argument('--eval_epoch_decoder_discriminator',     default=85,                 type=int)
@@ -138,6 +138,18 @@ parser.add_argument('--normalized_bbox',    default=True,              type=str2
 parser.add_argument('--normalize_face_size', default=0.4,              type=float)
 parser.add_argument('--normalize_top_shift', default=0.5,              type=float)
 parser.add_argument('--eval_video_path',       default=None,              type=str)
+
+# FLAME
+parser.add_argument('--flame_model_path',         default='/home/lichnost/programming/work/ml/head/FLAME/model/female_model.pkl',              type=str)
+parser.add_argument('--flame_shape_params',       default=100,              type=int)
+parser.add_argument('--flame_expression_params',  default=50,               type=int)
+parser.add_argument('--flame_pose_params',        default=7,               type=int)
+parser.add_argument('--flame_use_3D_translation', default=False,               type=str2bool)
+parser.add_argument('--flame_static_landmark_embedding_path',       default='/home/lichnost/programming/work/ml/head/FLAME/model/flame_static_embedding.pkl',               type=str)
+parser.add_argument('--flame_dynamic_landmark_embedding_path',       default='/home/lichnost/programming/work/ml/head/FLAME/model/flame_dynamic_embedding.npy',             type=str)
+parser.add_argument('--flame_texture_path',       default='/home/lichnost/programming/work/ml/head/FLAME/model/FLAME_texture.npz',             type=str)
+parser.add_argument('--flame_dataset_mean_shape', default=True,             type=str2bool)
+parser.add_argument('--flame_random_params',      default=True,             type=str2bool)
 
 
 def parse_args():

@@ -1,13 +1,14 @@
 import os
 import torch
 import torch.nn as nn
-from utils.dataset import GeneralDataset, ShapeDataset
+from utils.dataset import GeneralDataset, ShapePCADataset, ShapeFlameDataset
 from utils import *
 from utils.args import parse_args
 import tqdm
 from kornia.color import denormalize, normalize, rgb_to_grayscale
-from kornia import image_to_tensor
+from kornia import image_to_tensor, scale, translate, resize
 from models import GPLoss
+from flame.FLAME import get_flame_layer, render_images, random_texture
 
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
@@ -125,8 +126,8 @@ def train_preliminary(arg):
 
     print('Loading dataset ...')
 
-    trainset_b = ShapeDataset(arg, dataset=arg.dataset, split=arg.split)
-    trainset_a = ShapeDataset(arg, dataset=arg.dataset_source, split=arg.split_source, trainset_sim=trainset_b)
+    trainset_b = ShapePCADataset(arg, dataset=arg.dataset, split=arg.split)
+    trainset_a = ShapePCADataset(arg, dataset=arg.dataset_source, split=arg.split_source, trainset_sim=trainset_b)
 
     dataloader_a = torch.utils.data.DataLoader(trainset_a, batch_size=arg.batch_size, shuffle=arg.shuffle,
                                              num_workers=arg.workers, pin_memory=True)
@@ -686,6 +687,262 @@ def draw_coords(dataset, size, coords):
     return img
 
 
+def train_flame(arg):
+    log_writer = None
+    if arg.save_logs:
+        log_path = './logs/transformer_' + arg.dataset + '_' + arg.split_source + '2' + arg.split
+        if not os.path.exists(log_path):
+            os.makedirs(log_path)
+        log_writer = SummaryWriter(log_dir=log_path)
+
+        def log(tag, scalar, step):
+            log_writer.add_scalar(tag, scalar, step)
+
+        def log_img(tag, img, step):
+            log_writer.add_image(tag, img, step)
+
+        def log_text(tag, text, step):
+            log_writer.add_text(tag, text, step)
+    else:
+        def log(tag, scalar, step):
+            pass
+
+        def log_img(tag, img, step):
+            pass
+
+        def log_text(tag, text, step):
+            pass
+
+    epoch = None
+    devices = get_devices_list(arg)
+
+    print('*****  Normal Training  *****')
+    print('Training parameters:\n' +
+          '# Dataset source:            ' + arg.dataset + '\n' +
+          '# Dataset split source:      ' + arg.split_source + '\n' +
+          '# Dataset split target:      ' + arg.split + '\n' +
+          '# Batchsize:          ' + str(arg.batch_size) + '\n' +
+          '# Num workers:        ' + str(arg.workers) + '\n' +
+          '# Use GPU:            ' + str(arg.cuda) + '\n' +
+          '# Start lr:           ' + str(arg.lr) + '\n' +
+          '# Max epoch:          ' + str(arg.max_epoch) + '\n' +
+          '# Resumed model:      ' + str(arg.resume_epoch > 0))
+    if arg.resume_epoch > 0:
+        print('# Resumed epoch:      ' + str(arg.resume_epoch))
+
+    # log_text('arguments', json.dumps(vars(arg), indent=2), 0)
+
+    print('Creating networks ...')
+
+    estimator = create_model_estimator(arg, devices, eval=True)
+    estimator.eval()
+
+    generator_a2b = create_model_transformer_a2b(arg, devices, eval=False)
+    # print_network(generator_a2b)
+    generator_a2b.train()
+
+    optimizer_generator_ab, scheduler_generator_ab = create_optimizer(arg, generator_a2b.parameters())
+
+    print('Creating networks done!')
+
+    print('Creating FLAME model layer ...')
+
+    flame = get_flame_layer(arg.flame_model_path,
+                            arg.flame_static_landmark_embedding_path,
+                            arg.flame_dynamic_landmark_embedding_path,
+                            arg.batch_size,
+                            arg.flame_shape_params,
+                            arg.flame_expression_params,
+                            arg.flame_pose_params,
+                            arg.flame_use_3D_translation)
+    if arg.cuda:
+        flame = flame.to(devices[0])
+
+    faces = torch.from_numpy(np.float32(flame.faces))
+    faces = torch.cat(arg.batch_size * [faces.unsqueeze(0)]).to(torch.int64)
+    if arg.cuda:
+        faces = faces.to(devices[0])
+
+    texture_model = np.load(arg.flame_texture_path)
+    texture, faces_uvs, verts_uvs = random_texture(texture_model, arg.batch_size)
+    if arg.cuda:
+        texture = texture.to(devices[0])
+        faces_uvs = faces_uvs.to(devices[0])
+        verts_uvs = verts_uvs.to(devices[0])
+
+    print('Creating FLAME model layer done!')
+
+    criterion_gp = GPLoss()
+    if arg.cuda:
+        criterion_gp = criterion_gp.cuda(device=devices[0])
+
+        if arg.loss_type == 'L1':
+            criterion = nn.L1Loss()
+        elif arg.loss_type == 'smoothL1':
+            criterion = nn.SmoothL1Loss()
+        else:
+            criterion = nn.MSELoss()
+        if arg.cuda:
+            criterion = criterion.cuda(device=devices[0])
+
+    print('Loading dataset ...')
+
+    trainset_a = ShapeFlameDataset(arg, dataset=arg.dataset_source, split=arg.split_source)
+    trainset_b = ShapeFlameDataset(arg, dataset=arg.dataset, split=arg.split)
+
+    dataloader_a = torch.utils.data.DataLoader(trainset_a, batch_size=arg.batch_size, shuffle=arg.shuffle,
+                                               num_workers=arg.workers, pin_memory=True,
+                                               worker_init_fn=lambda _: np.random.seed())
+
+    print('Loading dataset done!')
+
+    shape_params_b = torch.cat(arg.batch_size * [torch.from_numpy(trainset_b.mean_shape_params).unsqueeze(0)])
+    if arg.cuda:
+        shape_params_b = shape_params_b.to(device=devices[0])
+
+    steps_per_epoch = len(dataloader_a)
+
+    # evolving training
+    print('Start training ...')
+    for epoch in range(arg.resume_epoch, arg.max_epoch):
+        global_step_base = epoch * steps_per_epoch
+        forward_times_per_epoch, sum_loss = 0, 0.0
+
+        for data in tqdm.tqdm(dataloader_a):
+            forward_times_per_epoch += 1
+            global_step = global_step_base + forward_times_per_epoch
+
+            path, shape, pose, neck_pose, expression, transl, scl = data
+
+            transl = transl * arg.crop_size * 2
+
+            if shape.shape[0] != arg.batch_size:
+                continue
+
+            if arg.cuda:
+                shape = shape.to(device=devices[0])
+                # pose = torch.zeros_like(pose)
+                pose = pose.to(device=devices[0])
+                neck_pose = neck_pose.to(device=devices[0])
+                expression = expression.to(device=devices[0])
+                transl = transl.to(device=devices[0])
+                scl = scl.to(device=devices[0])
+
+            vertices_a, _ = flame.forward(shape, expression, pose, neck_pose)
+            images_a = render_images(vertices_a, faces, texture, faces_uvs, verts_uvs, arg.crop_size, device=devices[0])[..., :3]
+
+            vertices_b, _ = flame.forward(shape_params_b, expression, pose, neck_pose)
+            images_b = render_images(vertices_b, faces, texture, faces_uvs, verts_uvs, arg.crop_size, device=devices[0])[..., :3]
+
+            images_a = rgb_to_grayscale(images_a.permute(0, 3, 1, 2))
+            images_a = scale(images_a, scl)
+            images_a = translate(images_a, transl)
+            images_a = resize(images_a, arg.crop_size)
+            images_a = images_a.clamp(0.0, 1.0)
+
+            images_b = rgb_to_grayscale(images_b.permute(0, 3, 1, 2))
+            images_b = scale(images_b, scl)
+            images_b = translate(images_b, transl)
+            images_b = resize(images_b, arg.crop_size)
+            images_b = images_b.clamp(0.0, 1.0)
+
+            # mean_a = torch.mean(images_a)
+            # std_a = torch.std(images_a)
+            # images_a = normalize(images_a, mean_a, std_a)
+            #
+            # mean_b = torch.mean(images_b)
+            # std_b = torch.std(images_b)
+            # images_b = normalize(images_b, mean_b, std_b)
+
+            edges_a = rescale_0_1(estimator(images_a)[-1].detach())
+            edges_b = rescale_0_1(estimator(images_b)[-1].detach())
+
+            optimizer_generator_ab.zero_grad()
+            edges = generator_a2b(edges_a)
+
+            loss_gp = calc_heatmap_loss_gp(criterion_gp, edges, edges_b)
+            log('loss_gp', loss_gp.item(), global_step)
+
+            loss_main = criterion(edges, edges_b)
+            log('loss_main', loss_main.item(), global_step)
+
+            loss = arg.loss_gp_lambda * loss_gp + loss_main
+            log('loss', loss.item(), global_step)
+
+            loss.backward()
+            optimizer_generator_ab.step()
+
+            sum_loss += loss.item()
+
+            mean_sum_loss = sum_loss / forward_times_per_epoch
+
+
+
+
+            if arg.save_logs and arg.save_img:
+                images_a_to_save = resize(images_a[0].unsqueeze(0), edges.shape[-1]).squeeze(1).detach().cpu()
+                images_b_to_save = resize(images_b[0].unsqueeze(0), edges.shape[-1]).squeeze(1).detach().cpu()
+                edges_a_to_save = get_heatmap_gray(edges_a[0], cutoff=True).unsqueeze(0).detach().cpu()
+                edges_b_to_save = get_heatmap_gray(edges_b[0], cutoff=True).unsqueeze(0).detach().cpu()
+                edge_to_save = get_heatmap_gray(edges[0], cutoff=True).unsqueeze(0).detach().cpu()
+
+                to_save = make_grid(torch.stack([
+                    images_a_to_save,
+                    images_b_to_save,
+                    edges_a_to_save,
+                    edges_b_to_save,
+                    edge_to_save
+                ]))
+
+                log_img('images', to_save, global_step)
+
+            # show_img(images_a[0].cpu().squeeze(0).numpy(), 'a', wait=1, keep=True)
+            # show_img(images_b[0].cpu().squeeze(0).numpy(), 'b', wait=1, keep=True)
+            # heatmap_show = get_heatmap_gray(edges_a[0].unsqueeze(0)).detach().cpu().numpy()
+            # heatmap_show = (
+            #         255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
+            # heatmap_show = np.moveaxis(heatmap_show, 0, -1)
+            # heatmap_show = cv2.resize(heatmap_show, (256, 256))
+            #
+            # show_img(heatmap_show, 'heatmap_a', wait=1, keep=True)
+            #
+            # heatmap_show = get_heatmap_gray(edges_b[0].unsqueeze(0)).detach().cpu().numpy()
+            # heatmap_show = (
+            #         255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
+            # heatmap_show = np.moveaxis(heatmap_show, 0, -1)
+            # heatmap_show = cv2.resize(heatmap_show, (256, 256))
+            #
+            # show_img(heatmap_show, 'heatmap_b', wait=1, keep=True)
+            #
+            # heatmap_show = get_heatmap_gray(edges[0].unsqueeze(0)).detach().cpu().numpy()
+            # heatmap_show = (
+            #         255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
+            # heatmap_show = np.moveaxis(heatmap_show, 0, -1)
+            # heatmap_show = cv2.resize(heatmap_show, (256, 256))
+            #
+            # show_img(heatmap_show, 'heatmap_gen')
+
+            # scheduler_generator.step(mean_sum_loss_gen)
+
+            if (epoch + 1) % arg.save_interval == 0:
+                torch.save(generator_a2b.state_dict(),
+                           arg.save_folder + 'transformer_' + arg.dataset + '_' + arg.split_source + '2' + arg.split + '_' + str(
+                               epoch + 1) + '.pth')
+
+            # if log_writer is not None:
+            #     log_writer.add_scalar()
+
+        print('\nepoch: {:0>4d} | loss: {:.6f} '.format(
+            epoch,
+            mean_sum_loss
+        ))
+
+    torch.save(generator_a2b.state_dict(),
+               arg.save_folder + 'transformer_' + arg.dataset + '_' + arg.split_source + '2' + arg.split + '_' + str(
+                   epoch + 1) + '.pth')
+    print('Training done!')
+
+
 if __name__ == '__main__':
     arg = parse_args()
 
@@ -694,4 +951,4 @@ if __name__ == '__main__':
     if not os.path.exists(arg.resume_folder):
         os.mkdir(arg.resume_folder)
 
-    train_fine(arg)
+    train_flame(arg)

@@ -31,6 +31,9 @@ def main(arg):
     edge = create_model_edge(arg, devices, eval=True)
     edge.eval()
 
+    transformer = create_model_transformer_a2b(arg, devices, eval=True)
+    transformer.eval()
+
     decoder = create_model_decoder(arg, devices, eval=True)
     decoder.eval()
 
@@ -136,9 +139,14 @@ def main(arg):
 
                         # heatmaps = F.interpolate(heatmaps, arg.crop_size, mode='bicubic')
                         heatmaps = edge(heatmaps)
-                        # heatmaps[heatmaps < arg.boundary_cutoff_lambda * heatmaps.max()] = 0
 
-                        fake_image_norm = decoder(heatmaps).detach()
+                        heatmaps_trans = transformer(heatmaps)
+
+                        # heatmaps_trans = heatmaps
+
+                        # heatmaps_trans[heatmaps_trans < arg.boundary_cutoff_lambda * heatmaps_trans.max()] = 0
+
+                        fake_image_norm = decoder(heatmaps_trans).detach()
                         fake_image = denormalize(fake_image_norm, mean, std).cpu().squeeze().numpy()
                         fake_image = np.uint8(np.moveaxis(fake_image, 0, -1))
                         fake_image = cv2.cvtColor(fake_image, cv2.COLOR_RGB2BGR)
@@ -153,6 +161,14 @@ def main(arg):
                             heatmap_show = cv2.resize(heatmap_show, (256, 256))
 
                             show_img(heatmap_show, 'heatmap', wait=1, keep=True)
+
+                            heatmap_show = get_heatmap_gray(heatmaps_trans).detach().cpu().numpy()
+                            heatmap_show = (
+                                    255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
+                            heatmap_show = np.moveaxis(heatmap_show, 0, -1)
+                            heatmap_show = cv2.resize(heatmap_show, (256, 256))
+
+                            show_img(heatmap_show, 'heatmap_trans', wait=1, keep=True)
 
 
             if k == ord('q') or k == ord('Q'):

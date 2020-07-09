@@ -1,6 +1,7 @@
-#conda install pytorch==1.5.0 cudatoolkit=10.1 -c pytorch
-#conda install pytorch3d==0.2.0 -c pytorch3d
-torchvision==0.6.0
+#conda install pytorch==1.5.1 cudatoolkit=10.2 -c pytorch
+#conda install pytorch3d==0.2.0 -c pytorch3d or pip install 'git+https://github.com/facebookresearch/pytorch3d.git@stable'
+
+torchvision==0.6.1
 kornia==0.3.1
 torch_optimizer==0.0.1a12
 opencv-python==4.2.0.34
@@ -8,8 +9,8 @@ jsonargparse
 chumpy==0.69
 pyrender==0.1.39
 trimesh==3.6.18
-smplx==0.1.14
+smplx==0.1.15
 tensorboard==2.2.1
-dlib
+dlib==19.20.0
 scikit-learn==0.22.2.post1
-matplotlib==3.2.1q
+matplotlib==3.2.1

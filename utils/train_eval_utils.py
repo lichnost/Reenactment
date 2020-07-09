@@ -6,10 +6,10 @@ from sklearn.metrics import auc
 from utils import *
 import torch_optimizer as optim
 from torch.optim import lr_scheduler
-from kornia.geometry.transform import warp_affine
 from torch.nn import init
 import math
 import os
+
 
 def get_devices_list(arg):
     devices_list = [torch.device('cpu')]
@@ -394,7 +394,7 @@ def calc_heatmap_loss_gp(criterion_gp, heatmaps_pred, heatmaps_target):
 
 
 def get_heatmap_gray(heatmaps, denorm=False, denorm_base=255, cutoff=False):
-    result = torch.sum(heatmaps, dim=1)
+    result = torch.sum(heatmaps, dim=heatmaps.ndim-3)
     if cutoff:
         result[result > 1] = 1
     if denorm:
@@ -661,3 +661,15 @@ def orientation_landmarks(dataset, shape):
         right_mouth = [right_mouth_x_avg, right_mouth_y_avg]
 
     return [nose, chin, left_eye_left, right_eye_right, left_mouth, right_mouth]
+
+
+def generate_random(ranges):
+    starts = ranges[:, 0]
+    widths = ranges[:, 1] - ranges[:, 0]
+    return np.float32(starts + widths * np.random.random(ranges.shape[0]))
+
+
+def rescale_0_1(data):
+    data -= data.min()
+    data /= data.max()
+    return data

@@ -1,0 +1,30 @@
+dataset: Faces
+split: Adush
+dataset_source: Faces
+split_source: PavelSemenov
+type: train
+
+crop_size: 256
+batch_size: 12
+shuffle: True
+PDB: False
+
+cuda: True
+gpu_id: 0
+
+loss_type: smoothL1
+loss_gp_lambda: 0.01
+optimizer: Yogi
+momentum: 0.0
+weight_decay: 0
+lr: 1e-5
+
+flame_dataset_mean_shape: True
+flame_random_params: True
+
+resume_epoch: 165
+save_logs: True
+save_img: True
+
+eval_epoch_estimator: 960
+

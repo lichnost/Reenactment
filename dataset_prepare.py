@@ -82,7 +82,7 @@ def detect_annotations(arg, img_original, estimator, regressor, face_detector, p
     img_for_detect = img_original
 
     pixels = img_original.shape[0] * img_original.shape[1]
-    pixels_max = 2000000
+    pixels_max = 3000000
     scale_factor = 1
     if pixels > pixels_max: # 2MP gpu memory overflow
         scale_factor = pixels_max / pixels

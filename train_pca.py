@@ -3,7 +3,7 @@ import tqdm
 
 from utils import *
 from utils.args import parse_args
-from utils.dataset import ShapeDataset
+from utils.dataset import ShapePCADataset
 from sklearn.decomposition import PCA
 
 
@@ -31,8 +31,8 @@ def main(arg):
     print('Creating networks done!')
 
     print('Loading dataset ...')
-    trainset = ShapeDataset(arg, dataset=arg.dataset, split=arg.split, pca_components=arg.pca_components)
-    trainset_source = ShapeDataset(arg, dataset=arg.dataset, split=arg.split_source, pca_components=arg.pca_components)
+    trainset = ShapePCADataset(arg, dataset=arg.dataset, split=arg.split, pca_components=arg.pca_components)
+    trainset_source = ShapePCADataset(arg, dataset=arg.dataset, split=arg.split_source, pca_components=arg.pca_components)
     print('Loading dataset done!')
 
     # evolving training
