@@ -41,10 +41,15 @@ def main(arg):
 
     mean = torch.FloatTensor(means_color[arg.eval_dataset_decoder][arg.eval_split_decoder])
     std = torch.FloatTensor(stds_color[arg.eval_dataset_decoder][arg.eval_split_decoder])
-
+    norm_min = (0 - mean) / std
+    norm_max = (255 - mean) / std
+    norm_range = norm_max - norm_min
     if arg.cuda:
         mean = mean.cuda(device=devices[0])
         std = std.cuda(device=devices[0])
+        norm_min = norm_min.cuda(device=devices[0])
+        # norm_max = norm_max.cuda(device=devices[0])
+        norm_range = norm_range.cuda(device=devices[0])
 
     if arg.eval_video_path is not None:
         cap = cv2.VideoCapture(arg.eval_video_path)
@@ -135,20 +140,27 @@ def main(arg):
                             heatmaps_orig = estimator(input_face)
                             heatmaps = heatmaps_orig[-1]
 
-                        # heatmaps = transformer(heatmaps)
+                        heatmaps_min = torch.min(heatmaps)
+                        heatmaps_range = torch.max(heatmaps) - heatmaps_min
+                        heatmaps = transformer(rescale_0_1(heatmaps, heatmaps_min, heatmaps_range))
 
+                        min = torch.min(heatmaps)
+                        max = torch.max(heatmaps)
+                        rng = max - min
+                        heatmaps = rescale_0_1(heatmaps, min, rng)
                         # heatmaps = F.interpolate(heatmaps, arg.crop_size, mode='bicubic')
                         heatmaps = edge(heatmaps)
 
-                        heatmaps_trans = transformer(heatmaps)
-
-                        # heatmaps_trans = heatmaps
-
                         # heatmaps_trans[heatmaps_trans < arg.boundary_cutoff_lambda * heatmaps_trans.max()] = 0
 
-                        fake_image_norm = decoder(heatmaps_trans).detach()
-                        fake_image = denormalize(fake_image_norm, mean, std).cpu().squeeze().numpy()
-                        fake_image = np.uint8(np.moveaxis(fake_image, 0, -1))
+                        min = torch.min(heatmaps)
+                        max = torch.max(heatmaps)
+                        rng = max - min
+                        heatmaps = rescale_0_1(heatmaps, min, rng)
+                        fake_image_norm = decoder(heatmaps).detach()
+                        fake_image_denorm = derescale_0_1(fake_image_norm, norm_min, norm_range)
+                        fake_image = denormalize(fake_image_denorm, mean, std).cpu().squeeze().numpy()
+                        fake_image = np.uint8(np.clip(np.moveaxis(fake_image, 0, -1), 0.0, 255.0))
                         fake_image = cv2.cvtColor(fake_image, cv2.COLOR_RGB2BGR)
 
                         if arg.eval_visual:
@@ -161,15 +173,6 @@ def main(arg):
                             heatmap_show = cv2.resize(heatmap_show, (256, 256))
 
                             show_img(heatmap_show, 'heatmap', wait=1, keep=True)
-
-                            heatmap_show = get_heatmap_gray(heatmaps_trans).detach().cpu().numpy()
-                            heatmap_show = (
-                                    255 - np.uint8(255 * (heatmap_show - np.min(heatmap_show)) / np.ptp(heatmap_show)))
-                            heatmap_show = np.moveaxis(heatmap_show, 0, -1)
-                            heatmap_show = cv2.resize(heatmap_show, (256, 256))
-
-                            show_img(heatmap_show, 'heatmap_trans', wait=1, keep=True)
-
 
             if k == ord('q') or k == ord('Q'):
                 break

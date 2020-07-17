@@ -9,7 +9,7 @@ from torch.optim import lr_scheduler
 from torch.nn import init
 import math
 import os
-
+from types import SimpleNamespace
 
 def get_devices_list(arg):
     devices_list = [torch.device('cpu')]
@@ -276,6 +276,37 @@ def create_model_edge(arg, devices_list, eval=False):
         edge = edge.cuda(device=devices_list[0])
 
     return edge
+
+
+def create_model_flame(arg, devices_list, eval=False):
+    from flame.FLAME import TexturedFLAME
+    resume_dataset = arg.eval_dataset_align if eval else arg.dataset
+    resume_split = arg.eval_split_flame if eval else arg.split
+    resume_epoch = arg.eval_epoch_align if eval else arg.resume_epoch
+
+    flame_conf = SimpleNamespace()
+    flame_conf.flame_model_path = arg.flame_model_path
+    flame_conf.use_face_contour = True
+    flame_conf.batch_size = arg.batch_size
+    flame_conf.shape_params = arg.flame_shape_params
+    flame_conf.expression_params = arg.flame_expression_params
+    flame_conf.pose_params = arg.flame_pose_params
+    flame_conf.use_3D_translation = False
+    flame_conf.static_landmark_embedding_path = arg.flame_static_landmark_embedding_path
+    flame_conf.dynamic_landmark_embedding_path = arg.flame_dynamic_landmark_embedding_path
+    flame_conf.texture_path = arg.flame_texture_path
+
+    align = TexturedFLAME(flame_conf, arg.crop_size, devices_list[0])
+
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'flame_' + resume_dataset + '_' + resume_split + '_' + str(resume_epoch) + '.pth'
+        print('Loading FLAME from ' + load_path)
+        align = load_weights(align, load_path, devices_list[0])
+
+    if arg.cuda:
+        align = align.cuda(device=devices_list[0])
+
+    return align
 
 
 def calc_d_fake(dataset, pred_coords, gt_coords, bcsize, bcsize_set, delta, theta):
@@ -669,7 +700,27 @@ def generate_random(ranges):
     return np.float32(starts + widths * np.random.random(ranges.shape[0]))
 
 
-def rescale_0_1(data):
-    data -= data.min()
-    data /= data.max()
+def rescale_0_1(data, min, range):
+    if isinstance(min, torch.Tensor) and isinstance(range, torch.Tensor)\
+            and min.ndim > 0 and min.shape[0] == 3 and range.ndim> 0 and range.shape[0] == 3:
+        range = torch.where(range < 1e-6, torch.ones_like(range), range)
+        data = data - min[None, :, None, None]
+        data = data / range[None, :, None, None]
+    else:
+        range = 1 if range < 1e-6 else range
+        data = data - min
+        data = data / range
+    return data
+
+
+def derescale_0_1(data, min, range):
+    if isinstance(min, torch.Tensor) and isinstance(range, torch.Tensor)\
+            and min.ndim > 0 and min.shape[0] == 3 and range.ndim> 0 and range.shape[0] == 3:
+        range = torch.where(range < 1e-6, torch.ones_like(range), range)
+        data = data * range[None, :, None, None]
+        data = data + min[None, :, None, None]
+    else:
+        range = 1 if range < 1e-6 else range
+        data = data * range
+        data = data + min
     return data

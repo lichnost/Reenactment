@@ -1,0 +1,41 @@
+
+dataset: Faces
+split: Adush
+type: train
+
+PDB: True
+shuffle: True
+trans_ratio: 0.0
+rotate_limit: 0.0
+scale_ratio_up: 0.1
+scale_ratio_down: 0.2
+scale_vertical: 0.0
+scale_horizontal: 0.0
+
+
+optimizer: Adam
+momentum: 0.0
+workers: 8
+crop_size: 256
+batch_size: 30
+weight_decay: 0
+lr: 5e-4
+gp_loss: True
+loss_gp_lambda: 1.0
+cp_loss: True
+loss_cp_lambda: 1.0
+feature_loss: False
+regressor_loss: False
+loss_type: wingloss
+GAN: False
+
+save_logs: True
+save_img: True
+resume_epoch: 1
+save_interval: 1
+
+cuda: True
+gpu_id: 0
+
+eval_epoch_estimator: 960
+

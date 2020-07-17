@@ -347,6 +347,9 @@ def train_estimator_and_regressor(arg):
 
     regressor = create_model_regressor(arg, devices)
     regressor.train()
+
+    edge = create_model_edge(arg, devices, eval=True)
+    edge.eval()
     print('Creating networks done!')
 
     optimizer_estimator, _ = create_optimizer(arg, estimator.parameters(), False)
@@ -354,6 +357,8 @@ def train_estimator_and_regressor(arg):
 
     criterion_estimator = AdaptiveWingLoss(alpha=arg.wingloss_alpha, omega=arg.wingloss_omega,
                                     epsilon=arg.wingloss_epsilon, theta=arg.wingloss_theta)
+    if arg.cuda:
+        criterion_estimator = criterion_estimator.cuda(device=devices[0])
 
     if arg.loss_type == 'L2':
         criterion_regressor = nn.MSELoss()
@@ -363,6 +368,12 @@ def train_estimator_and_regressor(arg):
         criterion_regressor = nn.SmoothL1Loss()
     else:
         criterion_regressor = WingLoss(omega=arg.wingloss_omega, epsilon=arg.wingloss_epsilon)
+    if arg.cuda:
+        criterion_regressor = criterion_regressor.cuda(device=devices[0])
+
+    criterion_edge = nn.SmoothL1Loss()
+    if arg.cuda:
+        criterion_edge = criterion_edge.cuda(device=devices[0])
 
     print('Loading dataset ...')
     trainset = GeneralDataset(arg, dataset=arg.dataset, split=arg.split)
@@ -384,18 +395,21 @@ def train_estimator_and_regressor(arg):
             global_step = global_step_base + forward_times_per_epoch
 
             _, input_images, _, gt_coords_xy, gt_heatmap, _, _, _ = data
-            input_images = input_images.cuda(device=devices[0])
-            gt_coords_xy = gt_coords_xy.cuda(device=devices[0])
-            gt_heatmap = gt_heatmap.cuda(device=devices[0])
+            if arg.cuda:
+                input_images = input_images.cuda(device=devices[0])
+                gt_coords_xy = gt_coords_xy.cuda(device=devices[0])
+                gt_heatmap = gt_heatmap.cuda(device=devices[0])
 
             optimizer_estimator.zero_grad()
             heatmaps = estimator(input_images)
             loss_G = estimator.calc_loss(heatmaps, gt_heatmap)
             loss_W = criterion_estimator(heatmaps[-1], gt_heatmap)
+            loss_edge = criterion_edge(edges, edges_b)
             log('loss_G', loss_G.item(), global_step)
             log('loss_W', loss_W.item(), global_step)
+            log('loss_edge', loss_edge.item(), global_step)
 
-            loss_estimator = arg.loss_gp_lambda * loss_G + loss_W
+            loss_estimator = arg.loss_gp_lambda * loss_G + loss_W + loss_edge
             log('loss_estimator', loss_estimator.item(), global_step)
 
             loss_estimator.backward()

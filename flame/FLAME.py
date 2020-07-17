@@ -37,7 +37,7 @@ from types import SimpleNamespace
 from pytorch3d.structures import Meshes, Textures
 from pytorch3d.renderer import OpenGLOrthographicCameras, OpenGLPerspectiveCameras, look_at_view_transform,\
     RasterizationSettings, BlendParams, MeshRenderer, MeshRasterizer, HardPhongShader, HardFlatShader,\
-    SoftSilhouetteShader, TexturedSoftPhongShader, PointLights
+    SoftSilhouetteShader, TexturedSoftPhongShader, PointLights, DirectionalLights
 
 from utils.train_eval_utils import generate_random
 
@@ -60,6 +60,10 @@ class FLAME(nn.Module):
                              to_tensor(to_np(self.faces, dtype=np.int64),
                                        dtype=torch.long))
 
+        pose_params = torch.zeros([self.batch_size, 6],
+                                            dtype=self.dtype, requires_grad=True)
+        self.register_parameter('pose_params', nn.Parameter(pose_params, requires_grad=True))
+
         # Fixing remaining Shape betas
         # There are total 300 shape parameters to control FLAME; But one can use the first few parameters to express
         # the shape. For example 100 shape parameters are used for RingNet project 
@@ -67,6 +71,10 @@ class FLAME(nn.Module):
                                             dtype=self.dtype, requires_grad=False)
         self.register_parameter('shape_betas', nn.Parameter(default_shape,
                                                       requires_grad=False))
+        shape_params = torch.zeros([self.batch_size, config.shape_params],
+                                    dtype=self.dtype, requires_grad=True)
+        self.register_parameter('shape_params', nn.Parameter(shape_params,
+                                                             requires_grad=True))
 
         # Fixing remaining expression betas
         # There are total 100 shape expression parameters to control FLAME; But one can use the first few parameters to express
@@ -75,27 +83,31 @@ class FLAME(nn.Module):
                                     dtype=self.dtype, requires_grad=False)
         self.register_parameter('expression_betas', nn.Parameter(default_exp,
                                                             requires_grad=False))
+        espression_params = torch.zeros([self.batch_size, config.expression_params],
+                                  dtype=self.dtype, requires_grad=True)
+        self.register_parameter('expression_params', nn.Parameter(espression_params,
+                                                                 requires_grad=True))
 
         # Eyeball and neck rotation
         default_eyball_pose = torch.zeros([self.batch_size, 6],
-                                    dtype=self.dtype, requires_grad=False)
+                                    dtype=self.dtype, requires_grad=True)
         self.register_parameter('eye_pose', nn.Parameter(default_eyball_pose,
-                                                            requires_grad=False))
+                                                            requires_grad=True))
 
         default_neck_pose = torch.zeros([self.batch_size, 3],
-                                    dtype=self.dtype, requires_grad=False)
+                                    dtype=self.dtype, requires_grad=True)
         self.register_parameter('neck_pose', nn.Parameter(default_neck_pose,
-                                                            requires_grad=False))
+                                                            requires_grad=True))
 
         # Fixing 3D translation since we use translation in the image plane
 
         self.use_3D_translation = config.use_3D_translation
 
         default_transl = torch.zeros([self.batch_size, 3],
-                                     dtype=self.dtype, requires_grad=False)
+                                     dtype=self.dtype, requires_grad=True)
         self.register_parameter(
             'transl',
-            nn.Parameter(default_transl, requires_grad=False))
+            nn.Parameter(default_transl, requires_grad=True))
 
         # The vertices of the template model
         self.register_buffer('v_template',
@@ -164,6 +176,8 @@ class FLAME(nn.Module):
             self.register_buffer('neck_kin_chain',
                                  torch.stack(neck_kin_chain))
 
+
+
     def forward(self, shape_params=None, expression_params=None, pose_params=None, neck_pose=None, eye_pose=None, transl=None):
         """
             Input:
@@ -174,11 +188,23 @@ class FLAME(nn.Module):
                 vertices: N X V X 3
                 landmarks: N X number of landmarks X 3
         """
-        betas = torch.cat([shape_params,self.shape_betas, expression_params, self.expression_betas], dim=1)
-        neck_pose = (neck_pose if neck_pose is not None else self.neck_pose)
-        eye_pose = (eye_pose if eye_pose is not None else self.eye_pose)
-        transl = (transl if transl is not None else self.transl)
-        full_pose = torch.cat([pose_params[:,:3], neck_pose, pose_params[:,3:], eye_pose], dim=1)
+
+        if shape_params is not None:
+            self.shape_params = nn.Parameter(shape_params.to(device=self.shape_params.device), requires_grad=True)
+        if expression_params is not None:
+            self.expression_params = nn.Parameter(expression_params.to(device=self.expression_params.device),
+                                                  requires_grad=True)
+        if pose_params is not None:
+            self.pose_params = nn.Parameter(pose_params.to(device=self.pose_params.device), requires_grad=True)
+        if neck_pose is not None:
+            self.neck_pose = nn.Parameter(neck_pose.to(device=self.neck_pose.device), requires_grad=True)
+        if eye_pose is not None:
+            self.eye_pose = nn.Parameter(eye_pose.to(device=self.eye_pose.device), requires_grad=True)
+        if transl is not None:
+            self.transl = nn.Parameter(transl.to(device=self.transl.device), requires_grad=True)
+
+        betas = torch.cat([self.shape_params, self.shape_betas, self.expression_params, self.expression_betas], dim=1)
+        full_pose = torch.cat([self.pose_params[:,:3], self.neck_pose, self.pose_params[:,3:], self.eye_pose], dim=1)
         template_vertices = self.v_template.unsqueeze(0).repeat(self.batch_size, 1, 1)
 
         vertices, _ = lbs(betas, full_pose, template_vertices,
@@ -206,8 +232,8 @@ class FLAME(nn.Module):
                                              lmk_bary_coords)
 
         if self.use_3D_translation:
-            landmarks += transl.unsqueeze(dim=1)
-            vertices += transl.unsqueeze(dim=1)
+            landmarks += self.transl.unsqueeze(dim=1)
+            vertices += self.transl.unsqueeze(dim=1)
 
         return vertices, landmarks
 
@@ -379,3 +405,86 @@ def render_images(vertices, faces, texture, faces_uvs, verts_uvs, crop_size, dev
 
     images = renderer(meshes)
     return images
+
+
+class TexturedFLAME(FLAME):
+
+    def __init__(self, config, crop_size, device):
+        super(TexturedFLAME, self).__init__(config)
+
+        texture_model = np.load(config.texture_path)
+
+        self.texture_shape = texture_model['mean'].shape
+        self.texture_num_pc = texture_model['tex_dir'].shape[-1]
+        self.register_buffer('texture_mean', torch.reshape(torch.from_numpy(texture_model['mean']).to(dtype=self.dtype),
+                                                           (1, -1)))
+        self.register_buffer('texture_dir', torch.reshape(torch.from_numpy(texture_model['tex_dir'])
+                                                          .to(dtype=self.dtype), (-1, self.texture_num_pc)).t())
+
+        # faces_uvs = torch.cat(flame_conf.batch_size * [
+        #     torch.tensor(np.int64(faces_uvs), dtype=torch.int64, device=devices[0]).unsqueeze(0)])
+        # # verts_uvs = torch.cat(flame_conf.batch_size * [torch.tensor(np.float32(verts_uvs), dtype=torch.float32, device=devices[0]).unsqueeze(0)])
+        self.register_buffer('faces_uvs', torch.cat(self.batch_size * [torch.from_numpy(np.int64(texture_model['ft'])).unsqueeze(0)]))
+        self.register_buffer('verts_uvs', torch.cat(self.batch_size * [torch.from_numpy(texture_model['vt']).to(dtype=self.dtype).unsqueeze(0)]))
+
+        self.register_parameter('texture_params', nn.Parameter(torch.zeros((1, self.texture_num_pc),
+                                                                          dtype=self.dtype, requires_grad=True),
+                                                               requires_grad=True))
+
+        raster_settings = RasterizationSettings(
+            image_size=crop_size,
+            blur_radius=0.0,
+            faces_per_pixel=1,
+            bin_size=None,
+            max_faces_per_bin=None
+        )
+
+        R, T = look_at_view_transform(1.0, 0.5, 0)
+        self.register_buffer('renderer_R', R)
+        self.register_buffer('renderer_T', T)
+        self.renderer_camera = OpenGLPerspectiveCameras(R=self.renderer_R, T=self.renderer_T, fov=20, device=device)
+        renderer_lights = DirectionalLights(
+            direction=[[0.0, 0.0, 2.0]],
+            specular_color=[[0.0, 0.0, 0.0]],
+            device=device
+        )# PointLights(location=[[0.0, 0.0, -1.0]])
+        renderer_rasterizer = MeshRasterizer(cameras=self.renderer_camera, raster_settings=raster_settings)
+        renderer_shader = TexturedSoftPhongShader(cameras=self.renderer_camera, lights=renderer_lights, device=device)
+        self.renderer = MeshRenderer(rasterizer=renderer_rasterizer, shader=renderer_shader)
+
+    def forward(self, shape_params=None, expression_params=None, pose_params=None, neck_pose=None, eye_pose=None,
+                transl=None, texture_params=None):
+        vertices, landmarks = super(TexturedFLAME, self).forward(shape_params, expression_params, pose_params, neck_pose, eye_pose,
+                                           transl)
+        texture = torch.reshape(torch.add(self.texture_mean, torch.matmul(self.texture_params, self.texture_dir)), self.texture_shape)
+        texture = texture.clamp(0.0, 255.0)
+        texture = texture / 255.0
+        texture = torch.cat(self.batch_size * [texture.unsqueeze(0)])
+
+        textures = Textures(maps=texture, faces_uvs=self.faces_uvs, verts_uvs=self.verts_uvs)
+        meshes = Meshes(vertices, torch.cat(vertices.shape[0] * [self.faces_tensor.unsqueeze(0)]), textures)
+
+        images = self.renderer(meshes)
+        return vertices, landmarks, images
+
+    def transform_points(self, points):
+        return self.renderer_camera.transform_points(points)
+
+
+def get_texture_model(arg, devices):
+    texture_model = np.load(arg.flame_texture_path)
+    texture_shape = texture_model['mean'].shape
+    texture_num_pc = texture_model['tex_dir'].shape[-1]
+    texture_mean = torch.from_numpy(texture_model['mean'])
+    texture_dir = torch.from_numpy(texture_model['tex_dir'])
+    faces_uvs = torch.tensor(np.int64(texture_model['ft']), dtype=torch.int64).unsqueeze(0)
+    verts_uvs = torch.tensor(np.float32(texture_model['vt']), dtype=torch.float32).unsqueeze(0)
+
+    model = TexturedFLAME(texture_shape, texture_num_pc, texture_mean, texture_dir)
+
+    if arg.cuda:
+        faces_uvs = faces_uvs.cuda(device=devices[0])
+        verts_uvs = verts_uvs.cuda(device=devices[0])
+        model = model.cuda(device=devices[0])
+
+    return model, faces_uvs, verts_uvs

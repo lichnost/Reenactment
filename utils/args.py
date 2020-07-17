@@ -44,6 +44,7 @@ parser.add_argument('--scale_ratio_up',     default=0.1,                 type=fl
 parser.add_argument('--scale_ratio_down',   default=0.1,                 type=float) # boundary=0.4, decoder=0.1, transformer=0.1
 parser.add_argument('--scale_vertical',     default=0.0,                 type=float) # boundary=0.2, decoder=0.0, transformer=0.0
 parser.add_argument('--scale_horizontal',   default=0.0,                 type=float) # boundary=0.2, decoder=0.0, transformer=0.0
+parser.add_argument('--dataset_indexes',    default=[],                   nargs='*', type=int)
 
 # devices
 parser.add_argument('--cuda',               default=True,                type=str2bool)
@@ -84,6 +85,7 @@ parser.add_argument('--loss_feature_lambda',     default=10.,                typ
 parser.add_argument('--loss_pixel_lambda',     default=100.,                type=float)
 parser.add_argument('--loss_discrim_lambda',     default=5.0,                type=float) # transformer=1.0
 parser.add_argument('--loss_pca_lambda',     default=100.,                type=float) # transformer_preliminary=0.1, transformer_fine=100.
+parser.add_argument('--loss_edge_lambda',     default=1000.,                type=float) # transformer_preliminary=0.1, transformer_fine=100.
 
 # pca
 parser.add_argument('--pca_components',          default=196,                type=int)

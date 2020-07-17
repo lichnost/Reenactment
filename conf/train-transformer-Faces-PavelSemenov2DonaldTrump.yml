@@ -4,8 +4,9 @@ dataset_source: Faces
 split_source: PavelSemenov
 type: train
 
+workers: 8
 crop_size: 256
-batch_size: 12
+batch_size: 6
 shuffle: True
 PDB: False
 
@@ -14,7 +15,8 @@ gpu_id: 0
 
 loss_type: smoothL1
 loss_gp_lambda: 0.01
-optimizer: Yogi
+loss_edge_lambda: 1000.0
+optimizer: Adam
 momentum: 0.0
 weight_decay: 0
 lr: 1e-5
@@ -22,7 +24,7 @@ lr: 1e-5
 flame_dataset_mean_shape: True
 flame_random_params: True
 
-resume_epoch: 165
+resume_epoch: 0
 save_logs: True
 save_img: True
 

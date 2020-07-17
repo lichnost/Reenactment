@@ -1,7 +1,7 @@
 import torch.utils.data as data
 from utils import get_annotations_list, get_item_from, show_img
 import cv2
-from kornia import image_to_tensor, bgr_to_rgb
+from kornia import image_to_tensor, bgr_to_rgb, rgb_to_bgr, normalize, rgb_to_grayscale, tensor_to_image, denormalize
 from .dataset_info import *
 import numpy as np
 from .dataload import get_gt_coords, further_transform, get_random_transform_param, get_affine_matrix,\
@@ -158,6 +158,8 @@ class DecoderDataset(data.Dataset):
         self.mean_color, self.std_color = get_mean_std_color(self.dataset, self.split)
         self.mean_gray, self.std_gray = get_mean_std_gray(self.dataset, self.split)
         self.list = get_annotations_list(self.arg.dataset_route, dataset, split, arg.crop_size, ispdb=arg.PDB)
+        if len(arg.dataset_indexes) > 0:
+            self.list = [self.list[i] for i in arg.dataset_indexes]
 
     def __len__(self):
         return len(self.list)
@@ -211,14 +213,12 @@ class DecoderDataset(data.Dataset):
         pic_affine_orig = further_transform(pic_affine_orig, bbox, flip, gaussian_blur) if type in ['train'] else pic_affine_orig
 
         # show_img(pic_affine_orig, wait=0, keep=False)
+        pic_affine_orig = bgr_to_rgb(image_to_tensor(pic_affine_orig))
 
-        pic_affine_orig = np.float32(cv2.cvtColor(pic_affine_orig, cv2.COLOR_BGR2RGB))
-
-        pic_affine_orig_norm = pic_normalize_color(pic_affine_orig, self.mean_color, self.std_color)
-        pic_affine_orig_norm = np.moveaxis(pic_affine_orig_norm, -1, 0)
+        pic_affine_orig_norm = normalize(pic_affine_orig, torch.from_numpy(self.mean_color), torch.from_numpy(self.std_color))
         if not RGB:
             pic_affine = convert_img_to_gray(pic_affine_orig)
-            pic_affine = pic_normalize_gray(pic_affine, self.mean_gray, self.std_gray)[np.newaxis, ...]
+            pic_affine = normalize(pic_affine, self.mean_gray, self.std_gray)
         else:
             pic_affine = pic_affine_orig_norm
 

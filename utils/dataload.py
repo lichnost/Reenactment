@@ -222,9 +222,9 @@ def get_mean_std_color(dataset, split):
     mean = None
     std = None
     if dataset in means_color and split in means_color[dataset]:
-        mean = np.array(means_color[dataset][split])
+        mean = np.float32(np.array(means_color[dataset][split]))
     if dataset in stds_color and split in stds_color[dataset]:
-        std = np.array(stds_color[dataset][split])
+        std = np.float32(np.array(stds_color[dataset][split]))
     return mean, std
 
 

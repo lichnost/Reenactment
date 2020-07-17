@@ -1,0 +1,12 @@
+dataset: Faces
+split: Adush
+type: train
+
+batch_size: 4
+dataset_indexes:
+  - 0
+  - 1
+  - 2
+  - 3
+
+RGB: True
