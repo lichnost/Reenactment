@@ -2,6 +2,7 @@ dataset: Faces
 split: Adush
 type: train
 
+workers: 0
 batch_size: 4
 dataset_indexes:
   - 0
@@ -10,3 +11,8 @@ dataset_indexes:
   - 3
 
 RGB: True
+gp_loss: True
+cp_loss: True
+
+max_epoch: 10000
+save_logs: True

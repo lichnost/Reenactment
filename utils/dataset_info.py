@@ -257,13 +257,13 @@ flip_relation = {
 
 left_eye_left_corner_index_x = {'300W': 72, 'AFLW': 20, 'COFW': 26, 'WFLW': 120, 'Faces': 120, 'CelebA': 120}
 left_eye_left_corner_index_y = {'300W': 73, 'AFLW': 21, 'COFW': 27, 'WFLW': 121, 'Faces': 121, 'CelebA': 121}
-left_eye_right_corner_index_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 168, 'Faces': 168, 'CelebA': 168}
-left_eye_right_corner_index_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 169, 'Faces': 169, 'CelebA': 169}
+left_eye_right_corner_index_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 128, 'Faces': 128, 'CelebA': 128}
+left_eye_right_corner_index_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 129, 'Faces': 129, 'CelebA': 129}
 
 right_eye_right_corner_index_x = {'300W': 90, 'AFLW': 30, 'COFW': 38, 'WFLW': 144, 'Faces': 144, 'CelebA': 144}
 right_eye_right_corner_index_y = {'300W': 91, 'AFLW': 31, 'COFW': 39, 'WFLW': 145, 'Faces': 145, 'CelebA': 145}
-right_eye_left_corner_index_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 176, 'Faces': 176, 'CelebA': 176}
-right_eye_left_corner_index_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 177, 'Faces': 177, 'CelebA': 177}
+right_eye_left_corner_index_x = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 136, 'Faces': 136, 'CelebA': 136}
+right_eye_left_corner_index_y = {'300W': 0, 'AFLW': 0, 'COFW': 0, 'WFLW': 137, 'Faces': 137, 'CelebA': 137}
 
 left_eye_center_index_x = {'300W': [72, 74, 76, 78, 80, 82], 'AFLW': 22, 'COFW': 54, 'WFLW': 192, 'Faces': 192, 'CelebA': 192}
 left_eye_center_index_y = {'300W': [73, 75, 77, 79, 81, 83], 'AFLW': 23, 'COFW': 55, 'WFLW': 193, 'Faces': 193, 'CelebA': 193}

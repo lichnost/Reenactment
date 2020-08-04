@@ -143,6 +143,7 @@ parser.add_argument('--eval_video_path',       default=None,              type=s
 
 # FLAME
 parser.add_argument('--flame_model_path',         default='/home/lichnost/programming/work/ml/head/FLAME/model/female_model.pkl',              type=str)
+parser.add_argument('--flame_use_face_contour', default=False,               type=str2bool)
 parser.add_argument('--flame_shape_params',       default=100,              type=int)
 parser.add_argument('--flame_expression_params',  default=50,               type=int)
 parser.add_argument('--flame_pose_params',        default=7,               type=int)
@@ -152,6 +153,8 @@ parser.add_argument('--flame_dynamic_landmark_embedding_path',       default='/h
 parser.add_argument('--flame_texture_path',       default='/home/lichnost/programming/work/ml/head/FLAME/model/FLAME_texture.npz',             type=str)
 parser.add_argument('--flame_dataset_mean_shape', default=True,             type=str2bool)
 parser.add_argument('--flame_random_params',      default=True,             type=str2bool)
+
+parser.add_argument('--segment_model_path',       default='/home/lichnost/programming/work/ml/head/Look_At_Boundary_PyTorch/pretrained/UNet_MobileNetV2_state_dict.pth',             type=str)
 
 
 def parse_args():

@@ -66,6 +66,10 @@ def train(arg):
 
     optimizer_decoder, scheduler_decoder = create_optimizer(arg, decoder.parameters(), create_scheduler=True)
 
+    criterion_simple = nn.SmoothL1Loss()
+    if arg.cuda:
+        criterion_simple = criterion_simple.cuda(device=devices[0])
+
     criterion_gp = None
     if arg.gp_loss:
         criterion_gp = GPLoss()
@@ -77,8 +81,6 @@ def train(arg):
         criterion_cp = CPLoss()
         if arg.cuda:
             criterion_cp = criterion_cp.cuda(device=devices[0])
-
-    criterion_simple = nn.SmoothL1Loss()
 
     criterion_feature = None
     if arg.feature_loss:
@@ -161,17 +163,20 @@ def train(arg):
 
             optimizer_decoder.zero_grad()
 
-            loss_gp = criterion_gp(fake_images_denorm, input_images_denorm)
-            loss = arg.loss_gp_lambda * loss_gp
-            log('loss_gp', loss_gp.item(), global_step)
-
-            loss_cp = criterion_cp(fake_images_denorm, input_images_denorm)
-            loss = loss + arg.loss_cp_lambda * loss_cp
-            log('loss_cp', loss_cp.item(), global_step)
-
             loss_simple = criterion_simple(fake_images_denorm, input_images_denorm)
-            loss = loss + loss_simple
+            loss = loss_simple
             log('loss_simple', loss_simple.item(), global_step)
+
+            if criterion_gp is not None:
+                loss_gp = criterion_gp(fake_images_denorm, input_images_denorm)
+                loss = loss + arg.loss_gp_lambda * loss_gp
+                log('loss_gp', loss_gp.item(), global_step)
+
+            if criterion_cp is not None:
+                loss_cp = criterion_cp(fake_images_denorm, input_images_denorm)
+                loss = loss + arg.loss_cp_lambda * loss_cp
+                log('loss_cp', loss_cp.item(), global_step)
+
 
             if criterion_feature is not None:
                 loss_feature = criterion_feature(fake_images_denorm, input_images_denorm)

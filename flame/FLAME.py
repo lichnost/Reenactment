@@ -40,6 +40,7 @@ from pytorch3d.renderer import OpenGLOrthographicCameras, OpenGLPerspectiveCamer
     SoftSilhouetteShader, TexturedSoftPhongShader, PointLights, DirectionalLights
 
 from utils.train_eval_utils import generate_random
+from kornia import image_to_tensor, bgr_to_rgb
 
 class FLAME(nn.Module):
     """
@@ -67,11 +68,11 @@ class FLAME(nn.Module):
         # Fixing remaining Shape betas
         # There are total 300 shape parameters to control FLAME; But one can use the first few parameters to express
         # the shape. For example 100 shape parameters are used for RingNet project 
-        default_shape = torch.zeros([self.batch_size, 300-config.shape_params],
+        default_shape = torch.zeros([1, 300-config.shape_params],
                                             dtype=self.dtype, requires_grad=False)
         self.register_parameter('shape_betas', nn.Parameter(default_shape,
                                                       requires_grad=False))
-        shape_params = torch.zeros([self.batch_size, config.shape_params],
+        shape_params = torch.zeros([1, config.shape_params],
                                     dtype=self.dtype, requires_grad=True)
         self.register_parameter('shape_params', nn.Parameter(shape_params,
                                                              requires_grad=True))
@@ -190,7 +191,10 @@ class FLAME(nn.Module):
         """
 
         if shape_params is not None:
-            self.shape_params = nn.Parameter(shape_params.to(device=self.shape_params.device), requires_grad=True)
+            shape_params = nn.Parameter(shape_params.to(device=self.shape_params.device), requires_grad=True)
+        else:
+            shape_params = torch.cat(self.batch_size * [self.shape_params])
+
         if expression_params is not None:
             self.expression_params = nn.Parameter(expression_params.to(device=self.expression_params.device),
                                                   requires_grad=True)
@@ -203,7 +207,8 @@ class FLAME(nn.Module):
         if transl is not None:
             self.transl = nn.Parameter(transl.to(device=self.transl.device), requires_grad=True)
 
-        betas = torch.cat([self.shape_params, self.shape_betas, self.expression_params, self.expression_betas], dim=1)
+        shape_betas = torch.cat(self.batch_size * [self.shape_betas])
+        betas = torch.cat([shape_params, shape_betas, self.expression_params, self.expression_betas], dim=1)
         full_pose = torch.cat([self.pose_params[:,:3], self.neck_pose, self.pose_params[:,3:], self.eye_pose], dim=1)
         template_vertices = self.v_template.unsqueeze(0).repeat(self.batch_size, 1, 1)
 
@@ -411,7 +416,7 @@ class TexturedFLAME(FLAME):
 
     def __init__(self, config, crop_size, device):
         super(TexturedFLAME, self).__init__(config)
-
+        self.crop_size = crop_size
         texture_model = np.load(config.texture_path)
 
         self.texture_shape = texture_model['mean'].shape
@@ -464,11 +469,25 @@ class TexturedFLAME(FLAME):
         textures = Textures(maps=texture, faces_uvs=self.faces_uvs, verts_uvs=self.verts_uvs)
         meshes = Meshes(vertices, torch.cat(vertices.shape[0] * [self.faces_tensor.unsqueeze(0)]), textures)
 
-        images = self.renderer(meshes)
+        images = bgr_to_rgb(self.renderer(meshes)[..., :3].permute(0, -1, 1, 2))
+        # images = self.renderer(meshes)[..., :3].permute(0, -1, 1, 2)
+
+        landmarks = self.transform_points(landmarks)
+        landmarks[:, :, 0] *= -1
+        landmarks[:, :, 1] *= -1
+
+        for bi in range(landmarks.shape[0]):
+            for pi in range(landmarks.shape[1]):
+                landmarks[bi, pi, 0] = self._ndc_to_pix(landmarks[bi, pi, 0], self.crop_size)
+                landmarks[bi, pi, 1] = self._ndc_to_pix(landmarks[bi, pi, 1], self.crop_size)
+        landmarks = landmarks[:, :, :2] # x y only
         return vertices, landmarks, images
 
     def transform_points(self, points):
         return self.renderer_camera.transform_points(points)
+
+    def _ndc_to_pix(self, i, S):
+        return ((i + 1) * S - 1.0) / 2.0
 
 
 def get_texture_model(arg, devices):

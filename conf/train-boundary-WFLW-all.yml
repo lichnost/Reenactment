@@ -4,7 +4,7 @@ type: train
 
 regressor_only: False
 crop_size: 256
-batch_size: 13
+batch_size: 8
 shuffle: True
 PDB: True
 RGB: False
@@ -32,6 +32,6 @@ wingloss_alpha: 2.1
 
 loss_type: wingloss
 
-resume_epoch: 1095
+resume_epoch: 1040
 
 save_logs: True

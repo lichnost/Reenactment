@@ -1,0 +1,26 @@
+name: LAB
+channels:
+  - pytorch
+  - pytorch3d
+dependencies:
+  - python=3.7
+  - pytorch==1.5.1
+  - cudatoolkit=10.2
+  - torchvision==0.6.1
+  - pytorch3d==0.2.0
+  - torchserve==0.1.1
+  - torch-model-archiver==0.1.1
+  - pip:
+    - kornia==0.3.1
+    - torch_optimizer==0.0.1a12
+    - opencv-python==4.2.0.34
+    - jsonargparse
+    - chumpy==0.69
+    - pyrender==0.1.39
+    - trimesh==3.6.18
+    - smplx==0.1.15
+    - tensorboard==2.2.1
+    - dlib==19.20.0
+    - scikit-learn==0.22.2.post1
+    - matplotlib==3.2.1
+    - torchsummary==1.5.1

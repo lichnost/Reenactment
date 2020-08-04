@@ -4,7 +4,7 @@ import torch.nn as nn
 import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
-from models import WingLoss, AdaptiveWingLoss
+from models import WingLoss, AdaptiveWingLoss, GPLoss, calc_loss
 from utils import *
 from utils.args import parse_args
 from utils.dataset import GeneralDataset
@@ -58,6 +58,9 @@ def train_estimator_and_regressor_discrim(arg):
     regressor = create_model_regressor(arg, devices)
     regressor.train()
 
+    edge = create_model_edge(arg, devices, eval=True)
+    edge.eval()
+
     discrim = None
     if arg.GAN:
         discrim = create_model_heatmap_discrim(arg, devices)
@@ -69,6 +72,10 @@ def train_estimator_and_regressor_discrim(arg):
     optimizer_regressor = create_optimizer(arg, estimator.parameters())
     if discrim is not None:
         optimizer_discrim = create_optimizer(arg, estimator.parameters())
+
+    criterion_gp = GPLoss()
+    if arg.cuda:
+        criterion_gp = criterion_gp.cuda(device=devices[0])
 
     criterion_estimator = AdaptiveWingLoss(alpha=arg.wingloss_alpha, omega=arg.wingloss_omega,
                                     epsilon=arg.wingloss_epsilon, theta=arg.wingloss_theta)
@@ -82,10 +89,15 @@ def train_estimator_and_regressor_discrim(arg):
     elif arg.loss_type == 'wingloss':
         criterion_regressor = WingLoss(omega=arg.wingloss_omega, epsilon=arg.wingloss_epsilon)
 
+    criterion_edge = GPLoss()
+    if arg.cuda:
+        criterion_edge = criterion_edge.cuda(device=devices[0])
+
     print('Loading dataset ...')
     trainset = GeneralDataset(arg, dataset=arg.dataset, split=arg.split)
     dataloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=arg.shuffle,
-                                             num_workers=arg.workers, pin_memory=True)
+                                             num_workers=arg.workers, pin_memory=True,
+                                             worker_init_fn=lambda _: np.random.seed())
     steps_per_epoch = len(dataloader)
     print('Loading dataset done!')
 
@@ -105,19 +117,25 @@ def train_estimator_and_regressor_discrim(arg):
             global_step = global_step_base + forward_times_per_epoch
 
             _, input_images, _, gt_coords_xy, gt_heatmap, _, _, _ = data
-            true_batchsize = input_images.size()[0]
-            input_images = input_images.cuda(device=devices[0])
-            gt_coords_xy = gt_coords_xy.cuda(device=devices[0])
-            gt_heatmap = gt_heatmap.cuda(device=devices[0])
+            if arg.cuda:
+                true_batchsize = input_images.size()[0]
+                input_images = input_images.cuda(device=devices[0])
+                gt_coords_xy = gt_coords_xy.cuda(device=devices[0])
+                gt_heatmap = gt_heatmap.cuda(device=devices[0])
+
+            with torch.no_grad():
+                gt_edge = get_heatmap_gray(edge(gt_heatmap))
 
             optimizer_estimator.zero_grad()
             heatmaps = estimator(input_images)
 
-            loss_G = estimator.calc_loss(heatmaps, gt_heatmap)
+            loss_G = calc_loss(criterion_gp, heatmaps, gt_heatmap)
             loss_W = criterion_estimator(heatmaps, gt_heatmap)
+            loss_edge = criterion_edge(get_heatmap_gray(edge(heatmaps[-1])), gt_edge)
             log('loss_G', loss_G.item(), global_step)
             log('loss_W', loss_W.item(), global_step)
-            loss_estimator = loss_G + loss_W
+            log('loss_edge', loss_edge.item(), global_step)
+            loss_estimator = loss_G + loss_W + loss_edge
             
             if discrim is not None:
                 loss_D = torch.mean(torch.log2(1. - discrim(heatmaps[-1])))
@@ -248,7 +266,8 @@ def train_regressor_only(arg):
     print('Loading dataset ...')
     trainset = GeneralDataset(arg, dataset=arg.dataset, split=arg.split)
     dataloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=arg.shuffle,
-                                             num_workers=arg.workers, pin_memory=True)
+                                             num_workers=arg.workers, pin_memory=True,
+                                             worker_init_fn=lambda _: np.random.seed())
     steps_per_epoch = len(dataloader)
     print('Loading dataset done!')
 
@@ -360,6 +379,10 @@ def train_estimator_and_regressor(arg):
     if arg.cuda:
         criterion_estimator = criterion_estimator.cuda(device=devices[0])
 
+    criterion_gp = GPLoss()
+    if arg.cuda:
+        criterion_gp = criterion_gp.cuda(device=devices[0])
+
     if arg.loss_type == 'L2':
         criterion_regressor = nn.MSELoss()
     elif arg.loss_type == 'L1':
@@ -371,14 +394,15 @@ def train_estimator_and_regressor(arg):
     if arg.cuda:
         criterion_regressor = criterion_regressor.cuda(device=devices[0])
 
-    criterion_edge = nn.SmoothL1Loss()
+    criterion_edge = GPLoss()
     if arg.cuda:
         criterion_edge = criterion_edge.cuda(device=devices[0])
 
     print('Loading dataset ...')
     trainset = GeneralDataset(arg, dataset=arg.dataset, split=arg.split)
     dataloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=arg.shuffle,
-                                             num_workers=arg.workers, pin_memory=True)
+                                             num_workers=arg.workers, pin_memory=True,
+                                             worker_init_fn=lambda _: np.random.seed())
     steps_per_epoch = len(dataloader)
     print('Loading dataset done!')
 
@@ -400,11 +424,15 @@ def train_estimator_and_regressor(arg):
                 gt_coords_xy = gt_coords_xy.cuda(device=devices[0])
                 gt_heatmap = gt_heatmap.cuda(device=devices[0])
 
+            with torch.no_grad():
+                gt_edge = get_heatmap_gray(edge(gt_heatmap))
+
+
             optimizer_estimator.zero_grad()
             heatmaps = estimator(input_images)
-            loss_G = estimator.calc_loss(heatmaps, gt_heatmap)
+            loss_G = calc_loss(criterion_gp, heatmaps, gt_heatmap)
             loss_W = criterion_estimator(heatmaps[-1], gt_heatmap)
-            loss_edge = criterion_edge(edges, edges_b)
+            loss_edge = criterion_edge(get_heatmap_gray(edge(heatmaps[-1])), gt_edge)
             log('loss_G', loss_G.item(), global_step)
             log('loss_W', loss_W.item(), global_step)
             log('loss_edge', loss_edge.item(), global_step)

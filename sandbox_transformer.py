@@ -9,6 +9,7 @@ from pytorch3d.renderer import OpenGLPerspectiveCameras, OpenGLOrthographicCamer
     RasterizationSettings, BlendParams, MeshRenderer, MeshRasterizer, HardPhongShader, HardFlatShader,\
     SoftSilhouetteShader, TexturedSoftPhongShader, PointLights
 from pytorch3d.utils import ico_sphere
+from kornia import tensor_to_image, bgr_to_rgb, rgb_to_bgr
 
 
 def main(arg):
@@ -139,7 +140,7 @@ def main(arg):
     flame = TexturedFLAME(flame_conf, arg.crop_size, devices[0])
     flame = flame.cuda(devices[0])
     _, landmarks, images = flame()
-    image = images.detach().cpu().numpy()[0, ..., :3]
+    image = tensor_to_image(rgb_to_bgr(images[0].detach()))
     show_img(image, name='render', keep=True)
 
     # transform = camera.get_full_projection_transform()

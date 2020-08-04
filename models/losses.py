@@ -308,3 +308,22 @@ class FeatureLoss(torch.nn.Module):
             return (self.criterionL2(features_pred.relu3_3, features_target.relu3_3) +
                                    self.criterionL2(features_pred.relu4_3,
                                                     features_target.relu4_3))
+
+
+def calc_heatmap_loss_gp(criterion_gp, heatmaps_pred, heatmaps_target):
+    loss = None
+    for i in range(heatmaps_pred.size(1)):
+        pred = heatmaps_pred[:, i, ...]
+        target = heatmaps_target[:, i, ...]
+        loss = criterion_gp(pred, target) if loss is None else loss + criterion_gp(pred, target)
+    return loss
+
+
+def calc_loss(gp_loss, pred_heatmaps, gt_heatmap):
+    gradientprof_loss = []
+    for stack in range(len(pred_heatmaps)):
+        gradientprof_loss.append(calc_heatmap_loss_gp(gp_loss, pred_heatmaps[stack], gt_heatmap))
+
+    gradientprof_loss = torch.stack(gradientprof_loss, dim=0)
+    gradientprof_loss = torch.sum(gradientprof_loss)
+    return gradientprof_loss

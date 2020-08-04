@@ -7,7 +7,7 @@ import time
 import random
 import numpy as np
 from scipy.interpolate import splprep, splev
-
+import torch
 
 def get_annos_path(dataset_route, dataset, split):
     return dataset_route + dataset + '_' + split.replace('/', '-') + '_annos.txt'
@@ -317,9 +317,13 @@ def coords_seq_to_xy(dataset, shapes):
     :param shapes:
     :return:
     '''
-    if shapes.shape[0] == kp_num[dataset] * 2 + 1:
+    if shapes.shape[-1] == kp_num[dataset] * 2 + 1:
+        if isinstance(shapes, torch.Tensor):
+            return torch.reshape(shapes, [-1, kp_num[dataset], 2])
         return shapes.reshape((-1, kp_num[dataset], 2), order='F')
     else:
+        if isinstance(shapes, torch.Tensor):
+            return torch.reshape(shapes, [-1, kp_num[dataset], 2])
         return shapes.reshape((-1, 2), order='F')
 
 

@@ -23,6 +23,7 @@ def get_devices_list(arg):
 
 
 def load_weights(net, pth_file, device):
+
     state_dict = torch.load(pth_file, map_location=device)
     # create new OrderedDict that does not contain `module.`
     new_state_dict = OrderedDict()
@@ -286,7 +287,7 @@ def create_model_flame(arg, devices_list, eval=False):
 
     flame_conf = SimpleNamespace()
     flame_conf.flame_model_path = arg.flame_model_path
-    flame_conf.use_face_contour = True
+    flame_conf.use_face_contour = arg.flame_use_face_contour
     flame_conf.batch_size = arg.batch_size
     flame_conf.shape_params = arg.flame_shape_params
     flame_conf.expression_params = arg.flame_expression_params
@@ -307,6 +308,24 @@ def create_model_flame(arg, devices_list, eval=False):
         align = align.cuda(device=devices_list[0])
 
     return align
+
+
+def create_model_segment(arg, devices_list, eval=False):
+    from segment import UNet
+
+    net = UNet()
+
+    if arg.segment_model_path is None or not os.path.exists(arg.segment_model_path):
+        raise FileNotFoundError()
+
+    load_path = arg.segment_model_path
+    print('Loading UNet from ' + load_path)
+    net = load_weights(net, load_path, devices_list[0])
+
+    if arg.cuda:
+        net = net.cuda(device=devices_list[0])
+
+    return net
 
 
 def calc_d_fake(dataset, pred_coords, gt_coords, bcsize, bcsize_set, delta, theta):
@@ -413,15 +432,6 @@ def calc_auc(dataset, split, error_rate, max_threshold):
     for i in range(threshold.size):
         accuracys[i] = np.sum(error_rate < threshold[i]) * 1.0 / dataset_size[dataset][split]
     return auc(threshold, accuracys) / max_threshold, accuracys
-
-
-def calc_heatmap_loss_gp(criterion_gp, heatmaps_pred, heatmaps_target):
-    loss = None
-    for i in range(heatmaps_pred.size(1)):
-        pred = heatmaps_pred[:, i, ...]
-        target = heatmaps_target[:, i, ...]
-        loss = criterion_gp(pred, target) if loss is None else loss + criterion_gp(pred, target)
-    return loss
 
 
 def get_heatmap_gray(heatmaps, denorm=False, denorm_base=255, cutoff=False):
