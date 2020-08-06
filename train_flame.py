@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
-
+from facenet_pytorch import MTCNN, InceptionResnetV1
 
 def fit_flame(arg):
     log_writer = None
@@ -99,9 +99,15 @@ def fit_flame(arg):
         # input_images_norm = input_images_norm.to(device=devices[0])
         # gt_coords_xy = gt_coords_xy.to(device=devices[0])
 
-    masks = F.softmax(segmentation(input_images), dim=1)[:, 0, ...].unsqueeze(1).expand(-1, 3, -1, -1) * 255
-    input_images = denormalize(input_images, mean, std)
-    input_images = torch.clamp(input_images + masks, 0, 255)
+    # If required, create a face detection pipeline using MTCNN:
+    # mtcnn = MTCNN(image_size=arg.crop_size, device=devices[0])
+
+
+
+    # segments = segmentation(normalize(input_images, torch.tensor((0.485, 0.456, 0.406), device=devices[0]), torch.tensor((0.229, 0.224, 0.225), device=devices[0])))
+    # masks = F.softmax(segments, dim=1)[:, 0, ...].unsqueeze(1).expand(-1, 3, -1, -1) * 255
+    # input_images = denormalize(input_images, mean, std)
+    # input_images = torch.clamp(input_images + masks, 0, 255)
 
     # scale = 4
     #

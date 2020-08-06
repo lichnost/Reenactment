@@ -1,1 +1,1 @@
-from .UNet import UNet
+from .model import BiSeNet

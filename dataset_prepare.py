@@ -114,7 +114,7 @@ def detect_annotations(arg, img_original, estimator, regressor, face_detector, p
             int(bottom + arg.scale_ratio * height)
         ]
 
-        coords, _, inv_crop_matrix, _ = detect_coords(arg, img_original, bbox, arg.crop_size, estimator, regressor, devices)
+        coords, _, inv_crop_matrix, heatmap = detect_coords(arg, img_original, bbox, arg.crop_size, estimator, regressor, devices)
 
         annotation = []
 
@@ -149,6 +149,17 @@ def detect_annotations(arg, img_original, estimator, regressor, face_detector, p
         # path
         annotation.append(os.path.join(arg.split, file))
         annotation_lines.append(annotation)
+
+        if arg.save_heatmaps:
+            heatmaps_data = os.path.join(arg.dataset_route[arg.dataset], 'heatmaps', arg.split, 'data')
+            heatmaps_images = os.path.join(arg.dataset_route[arg.dataset], 'heatmaps', arg.split, 'images')
+            if not os.path.exists(heatmaps_data):
+                os.makedirs(heatmaps_data)
+            if not os.path.exists(heatmaps_images):
+                os.makedirs(heatmaps_images)
+            heatmaps_file = os.path.splitext(file)[0]
+            np.save(os.path.join(heatmaps_data, heatmaps_file + '.npy'), heatmap.squeeze().detach().cpu().numpy())
+            cv2.imwrite(os.path.join(heatmaps_images, heatmaps_file + '.jpg'), np.moveaxis(get_heatmap_gray(heatmap, True).detach().cpu().numpy(), 0, -1))
 
         # cv2.rectangle(img_original, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 2)
         # cv2.imshow('original', img_original)

@@ -1,0 +1,17 @@
+type: eval
+cuda: True
+gpu_id: 0
+
+dataset: Faces
+split: PavelSemenov
+
+eval_epoch_estimator: 1085
+
+normalized_bbox: True
+normalize_face_size: 0.4
+normalize_top_shift: 0.5
+
+eval_dataset_regressor: WFLW
+eval_epoch_regressor: 1085
+
+save_heatmaps: True

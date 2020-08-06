@@ -311,15 +311,15 @@ def create_model_flame(arg, devices_list, eval=False):
 
 
 def create_model_segment(arg, devices_list, eval=False):
-    from segment import UNet
+    from segment import BiSeNet
 
-    net = UNet()
+    net = BiSeNet(19)
 
     if arg.segment_model_path is None or not os.path.exists(arg.segment_model_path):
         raise FileNotFoundError()
 
     load_path = arg.segment_model_path
-    print('Loading UNet from ' + load_path)
+    print('Loading segmentation model from ' + load_path)
     net = load_weights(net, load_path, devices_list[0])
 
     if arg.cuda:

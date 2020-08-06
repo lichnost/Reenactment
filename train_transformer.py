@@ -801,10 +801,22 @@ def train_flame(arg):
     dataloader_a = torch.utils.data.DataLoader(trainset_a, batch_size=arg.batch_size, shuffle=arg.shuffle,
                                                num_workers=arg.workers, pin_memory=False, drop_last=True,
                                                worker_init_fn=lambda _: np.random.seed())
-
-    shape_params_b = torch.cat(arg.batch_size * [torch.from_numpy(trainset_b.mean_shape_params).unsqueeze(0)])
+    if arg.flame_shape_params_path_b is not None:
+        params = np.load(path, allow_pickle=True, encoding='latin1').item()
+        shape_params_b = torch.from_numpy(np.float32(params['shape']))
+    else:
+        shape_params_b = torch.from_numpy(trainset_b.mean_shape_params)
+    shape_params_b = torch.cat(arg.batch_size * [shape_params_b.unsqueeze(0)])
     if arg.cuda:
         shape_params_b = shape_params_b.to(device=devices[0])
+
+    shape_params_a = None
+    if arg.flame_shape_params_path_a is not None:
+        params = np.load(path, allow_pickle=True, encoding='latin1').item()
+        shape_params_a = torch.from_numpy(np.float32(params['shape']))
+        shape_params_a = torch.cat(arg.batch_size * [shape_params_a.unsqueeze(0)])
+        if arg.cuda:
+            shape_params_a = shape_params_a.to(device=devices[0])
 
     mean = torch.FloatTensor(means_color[arg.dataset][arg.split])
     std = torch.FloatTensor(stds_color[arg.dataset][arg.split])
@@ -837,6 +849,8 @@ def train_flame(arg):
             global_step = global_step_base + forward_times_per_epoch
 
             path, shape, pose, neck_pose, expression, transl, scl = data
+            if shape_params_a is not None:
+                shape = shape_params_a
 
             transl = transl * arg.crop_size * 2
 
