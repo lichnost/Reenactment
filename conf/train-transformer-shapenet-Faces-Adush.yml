@@ -1,0 +1,24 @@
+dataset: Faces
+split: Adush
+type: train
+
+workers: 8
+crop_size: 256
+batch_size: 448
+shuffle: True
+PDB: False
+
+cuda: True
+gpu_id: 0
+
+loss_gp_lambda: 0.01
+optimizer: Adam
+momentum: 0.0
+weight_decay: 0
+lr: 1e-3
+
+resume_epoch: 0
+max_epoch: 1500
+save_logs: True
+save_img: True
+

@@ -7,7 +7,8 @@ from utils.args import parse_args
 import tqdm
 from kornia.color import denormalize, normalize, rgb_to_grayscale
 from kornia import image_to_tensor, scale, translate, resize
-from models import GPLoss
+from kornia.augmentation import RandomRotation, RandomHorizontalFlip, RandomVerticalFlip, RandomErasing
+from models import GPLoss, calc_heatmap_loss_gp, ShapeTransformer
 from flame.FLAME import get_flame_layer, render_images, random_texture
 
 from torch.utils.tensorboard import SummaryWriter
@@ -103,7 +104,7 @@ def train_preliminary(arg):
     if arg.GAN:
         criterion_gan = nn.MSELoss()
         discrim_false = torch.zeros((arg.batch_size, 1, 6, 6))
-        discrim_true_train = torch.ones((arg.batch_size, 1, 6, 6)).fill_(0.85)
+        discrim_true_train = torch.ones((arg.batch_size, 1, 6, 6))
         discrim_true = torch.ones((arg.batch_size, 1, 6, 6))
         if arg.cuda:
             criterion_gan = criterion_gan.cuda(device=devices[0])
@@ -370,7 +371,7 @@ def train_fine(arg):
     if arg.resume_epoch > 0:
         print('# Resumed epoch:      ' + str(arg.resume_epoch))
 
-    log_text('arguments', json.dumps(vars(arg), indent=2), 0)
+    # log_text('arguments', json.dumps(vars(arg), indent=2), 0)
 
     print('Creating networks ...')
     pca = create_model_pca(arg, devices, eval=True)
@@ -400,6 +401,13 @@ def train_fine(arg):
         discrim_a.train()
         discrim_b = create_model_transformer_discrim_b(arg, devices, eval=False)
         discrim_b.train()
+
+        augument = nn.Sequential(
+            RandomRotation(135),
+            RandomVerticalFlip(0.9),
+            RandomHorizontalFlip(0.9),
+            RandomErasing()
+        )
 
     print('Creating networks done!')
 
@@ -506,14 +514,14 @@ def train_fine(arg):
                     gen_ab = generator_a2b(heatmaps_a)
                     gen_ba = generator_b2a(heatmaps_b)
 
-                loss_discrim_a_true = criterion_gan(discrim_a(edge(heatmaps_a)), discrim_true_train[:input_batch_size, ...])
-                loss_discrim_a_false = criterion_gan(discrim_a(edge(gen_ba)), discrim_false[:input_batch_size, ...])
+                loss_discrim_a_true = criterion_gan(discrim_a(augument(edge(heatmaps_a))), discrim_true_train[:input_batch_size, ...])
+                loss_discrim_a_false = criterion_gan(discrim_a(augument(edge(gen_ba))), discrim_false[:input_batch_size, ...])
                 loss_discrim_a = loss_discrim_a_true + loss_discrim_a_false
                 log('loss_discrim_a_true', loss_discrim_a_true.item(), global_step)
                 log('loss_discrim_a_false', loss_discrim_a_false.item(), global_step)
 
-                loss_discrim_b_true = criterion_gan(discrim_b(edge(heatmaps_b)), discrim_true_train[:input_batch_size, ...])
-                loss_discrim_b_false = criterion_gan(discrim_b(edge(gen_ab)), discrim_false[:input_batch_size, ...])
+                loss_discrim_b_true = criterion_gan(discrim_b(augument(edge(heatmaps_b))), discrim_true_train[:input_batch_size, ...])
+                loss_discrim_b_false = criterion_gan(discrim_b(augument(edge(gen_ab))), discrim_false[:input_batch_size, ...])
                 loss_discrim_b = loss_discrim_b_true + loss_discrim_b_false
                 log('loss_discrim_b_true', loss_discrim_b_true.item(), global_step)
                 log('loss_discrim_b_false', loss_discrim_b_false.item(), global_step)
@@ -546,8 +554,8 @@ def train_fine(arg):
                 discrim_a.eval()
                 discrim_b.eval()
 
-                loss_gan_ab = criterion_gan(discrim_b(edge_ab), discrim_true[:input_batch_size, ...])
-                loss_gan_ba  = criterion_gan(discrim_a(edge_ba), discrim_true[:input_batch_size, ...])
+                loss_gan_ab = criterion_gan(discrim_b(augument(edge_ab)), discrim_true[:input_batch_size, ...])
+                loss_gan_ba  = criterion_gan(discrim_a(augument(edge_ba)), discrim_true[:input_batch_size, ...])
                 loss_gan = loss_gan_ab + loss_gan_ba
                 log('loss_gan_ab', loss_gan_ab.item(), global_step)
                 log('loss_gan_ba', loss_gan_ba.item(), global_step)
@@ -618,19 +626,19 @@ def train_fine(arg):
                     image_to_tensor(draw_coords(arg.dataset, img_size, align_coords_ba[0].detach().cpu().numpy())),
                     image_to_tensor(draw_coords(arg.dataset, img_size, align_coords_a[0].detach().cpu().numpy())),
                     image_to_tensor(draw_coords(arg.dataset, img_size, align_coords_b[0].detach().cpu().numpy()))
-                ]), normalize=True)
+                ]), normalize=False)
 
                 inv_coords_to_save = make_grid(torch.stack([
                     image_to_tensor(draw_coords(arg.dataset, img_size, pca_inverse(pca_gen_ab[0].unsqueeze(0))[0].detach().cpu().numpy())),
                     image_to_tensor(draw_coords(arg.dataset, img_size, pca_inverse(pca_gen_ba[0].unsqueeze(0))[0].detach().cpu().numpy())),
                     image_to_tensor(draw_coords(arg.dataset, img_size, pca_inverse(pca_coords_a[0].unsqueeze(0))[0].detach().cpu().numpy())),
                     image_to_tensor(draw_coords(arg.dataset, img_size, pca_inverse(pca_coords_b[0].unsqueeze(0))[0].detach().cpu().numpy()))
-                ]), normalize=True)
+                ]), normalize=False)
 
                 log_img('images', make_grid(torch.stack([heatmaps_input_to_save,
                                                          heatmaps_generated_to_save,
-                                                         align_coords_to_save,
-                                                         inv_coords_to_save]),
+                                                         align_coords_to_save.to(dtype=torch.float32),
+                                                         inv_coords_to_save.to(dtype=torch.float32)]),
                                             normalize=False,
                                             nrow=1,
                                             padding=0), global_step)
@@ -988,6 +996,156 @@ def train_flame(arg):
     print('Training done!')
 
 
+def train_shape(arg):
+    log_writer = None
+    if arg.save_logs:
+        log_path = './logs/transformer_' + arg.dataset + '_' + arg.split
+        if not os.path.exists(log_path):
+            os.makedirs(log_path)
+        log_writer = SummaryWriter(log_dir=log_path)
+
+        def log(tag, scalar, step):
+            log_writer.add_scalar(tag, scalar, step)
+
+        def log_img(tag, img, step):
+            log_writer.add_image(tag, img, step)
+
+        def log_text(tag, text, step):
+            log_writer.add_text(tag, text, step)
+    else:
+        def log(tag, scalar, step):
+            pass
+
+        def log_img(tag, img, step):
+            pass
+
+        def log_text(tag, text, step):
+            pass
+
+    epoch = None
+    devices = get_devices_list(arg)
+
+    print('*****  Normal Training  *****')
+    print('Training parameters:\n' +
+          '# Dataset source:            ' + arg.dataset + '\n' +
+          '# Dataset split source:      ' + arg.split_source + '\n' +
+          '# Dataset split target:      ' + arg.split + '\n' +
+          '# Batchsize:          ' + str(arg.batch_size) + '\n' +
+          '# Num workers:        ' + str(arg.workers) + '\n' +
+          '# PDB:                ' + str(arg.PDB) + '\n' +
+          '# Use GPU:            ' + str(arg.cuda) + '\n' +
+          '# Start lr:           ' + str(arg.lr) + '\n' +
+          '# Max epoch:          ' + str(arg.max_epoch) + '\n' +
+          '# Resumed model:      ' + str(arg.resume_epoch > 0))
+    if arg.resume_epoch > 0:
+        print('# Resumed epoch:      ' + str(arg.resume_epoch))
+
+    # log_text('arguments', json.dumps(vars(arg), indent=2), 0)
+
+    print('Creating networks ...')
+    shape_layer = create_model_transformer_shape(arg, devices, True)
+    shape_layer.eval()
+
+    encoder = create_model_transformer_encoder(arg, devices, shape_layer.num_params, False)
+    encoder.train()
+
+    generator = create_model_transformer_generator(arg, devices, False)
+    generator.train()
+
+    transformer = ShapeTransformer(encoder, shape_layer, generator, kp_num[arg.dataset])
+
+    optimizer, _ = create_optimizer(arg, list(encoder.parameters()) + list(generator.parameters()))
+
+    print('Creating networks done!')
+
+    criterion_gp = GPLoss([1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.])
+    if arg.cuda:
+        criterion_gp = criterion_gp.cuda(device=devices[0])
+    criterion = nn.L1Loss()
+    if arg.cuda:
+        criterion = criterion.cuda(device=devices[0])
+
+    criterion_landmarks = nn.MSELoss()
+    if arg.cuda:
+        criterion_landmarks = criterion_landmarks.cuda(device=devices[0])
+
+    print('Loading dataset ...')
+
+    trainset = ShapePCADataset(arg, dataset=arg.dataset, split=arg.split)
+    dataloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=arg.shuffle,
+                                               num_workers=arg.workers, pin_memory=True, drop_last=True,
+                                               worker_init_fn=lambda _: np.random.seed())
+    print('Loading dataset done!')
+
+    steps_per_epoch = len(dataloader)
+
+    # evolving training
+    print('Start training ...')
+    for epoch in range(arg.resume_epoch, arg.max_epoch):
+        global_step_base = epoch * steps_per_epoch
+        forward_times_per_epoch, sum_loss = 0, 0.0
+
+        for data in tqdm.tqdm(dataloader):
+            forward_times_per_epoch += 1
+            global_step = global_step_base + forward_times_per_epoch
+
+            landmarks, input, _, _, _ = data
+            if arg.cuda:
+                landmarks = landmarks.to(device=devices[0])
+                input = input.to(device=devices[0])
+
+            optimizer.zero_grad()
+
+            out_landmarks, output = transformer(input)
+
+            loss_simple = criterion(output, input)
+            loss = loss_simple
+            log('loss_simple', loss_simple.item(), global_step)
+
+            loss_gp = criterion_gp(output, input)
+            loss = loss + arg.loss_gp_lambda * loss_gp
+            log('loss_gp', loss_gp.item(), global_step)
+
+            loss_landmarks = criterion_landmarks(out_landmarks, coords_seq_to_xy(arg.dataset, landmarks))
+            loss = loss + loss_landmarks
+            log('loss_landmarks', loss_landmarks.item(), global_step)
+
+            log('loss', loss.item(), global_step)
+
+            loss.backward()
+            optimizer.step()
+
+            sum_loss += loss.item()
+
+            if arg.save_logs and arg.save_img:
+                images_to_log = 8
+                images_to_save = make_grid([get_heatmap_gray(image).unsqueeze(0) for image in input[:images_to_log]] +
+                                            [get_heatmap_gray(image).unsqueeze(0) for image in output[:images_to_log]],
+                                           images_to_log)
+                log_img('images', images_to_save, global_step)
+
+        if (epoch + 1) % arg.save_interval == 0:
+            torch.save(encoder.state_dict(),
+                       arg.save_folder + 'transformer_encoder_' + arg.dataset + '_' + arg.split + '_' + str(
+                           epoch + 1) + '.pth')
+            torch.save(generator.state_dict(),
+                       arg.save_folder + 'transformer_generator_' + arg.dataset + '_' + arg.split + '_' + str(
+                           epoch + 1) + '.pth')
+
+        mean_loss = sum_loss / forward_times_per_epoch
+        print('\nepoch: {:0>4d} | loss: {:.10f}'.format(
+            epoch,
+            mean_loss,
+        ))
+
+    torch.save(encoder.state_dict(),
+               arg.save_folder + 'transformer_encoder_' + arg.dataset + '_' + arg.split + '_' + str(
+                   epoch + 1) + '.pth')
+    torch.save(generator.state_dict(),
+               arg.save_folder + 'transformer_generator_' + arg.dataset + '_' + arg.split + '_' + str(
+                   epoch + 1) + '.pth')
+    print('Training done!')
+
 if __name__ == '__main__':
     arg = parse_args()
 
@@ -996,4 +1154,4 @@ if __name__ == '__main__':
     if not os.path.exists(arg.resume_folder):
         os.mkdir(arg.resume_folder)
 
-    train_flame(arg)
+    train_shape(arg)

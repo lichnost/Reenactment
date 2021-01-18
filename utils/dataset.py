@@ -44,7 +44,7 @@ class ShapePCADataset(data.Dataset):
         self.dataset = dataset
         self.split = split
         self.pca_components = pca_components
-        self.list = get_annotations_list(self.arg.dataset_route, dataset, split, arg.crop_size, ispdb=arg.PDB)
+        self.list = get_annotations_list(self.arg.dataset_route, dataset, split, arg.crop_size, ispdb=arg.PDB)#[:1024]
 
         self.shapes = None
         self.pose_params = None

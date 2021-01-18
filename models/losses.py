@@ -9,9 +9,9 @@ from collections import namedtuple
 
 
 class GPLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, weight=[1., 1., 1.]):
         super(GPLoss, self).__init__()
-        self.trace = SPLoss()
+        self.trace = SPLoss(weight)
 
     def get_image_gradients(self, input):
         f_v_1 = F.pad(input, (0, -1, 0, 0))
@@ -38,13 +38,13 @@ class GPLoss(nn.Module):
 
 
 class CPLoss(nn.Module):
-    def __init__(self, rgb=True, yuv=True, yuvgrad=True):
+    def __init__(self, rgb=True, yuv=True, yuvgrad=True, weight=[1., 1., 1.]):
         super(CPLoss, self).__init__()
         self.rgb = rgb
         self.yuv = yuv
         self.yuvgrad = yuvgrad
-        self.trace = SPLoss()
-        self.trace_YUV = SPLoss()
+        self.trace = SPLoss(weight)
+        self.trace_YUV = SPLoss(weight)
 
     def get_image_gradients(self, input):
         f_v_1 = F.pad(input, (0, -1, 0, 0))
@@ -96,7 +96,7 @@ class SPLoss(nn.Module):
 
     def __init__(self, weight=[1., 1., 1.]):
         super(SPLoss, self).__init__()
-        self.weight = weight
+        self.register_buffer('weight', torch.Tensor(weight))
 
     def __call__(self, input, reference):
         a = 0
@@ -319,7 +319,7 @@ def calc_heatmap_loss_gp(criterion_gp, heatmaps_pred, heatmaps_target):
     return loss
 
 
-def calc_loss(gp_loss, pred_heatmaps, gt_heatmap):
+def calc_gp_heatmap_loss(gp_loss, pred_heatmaps, gt_heatmap):
     gradientprof_loss = []
     for stack in range(len(pred_heatmaps)):
         gradientprof_loss.append(calc_heatmap_loss_gp(gp_loss, pred_heatmaps[stack], gt_heatmap))

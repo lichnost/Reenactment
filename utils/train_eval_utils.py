@@ -249,6 +249,65 @@ def create_model_transformer_discrim_b(arg, devices_list, eval=False):
     return discrim
 
 
+def create_model_transformer_shape(arg, devices_list, eval=False):
+    from models.shape import HomogeneousShapeLayer
+    eval = True
+    resume_dataset = arg.eval_dataset_pca if eval else arg.dataset
+    resume_split = arg.eval_split_pca if eval else arg.split
+
+    load_path = os.path.join(arg.dataset_route[resume_dataset], 'pca', resume_split, resume_split + '.npy')
+    print('Loading shape from ' + load_path)
+    shapes = np.load(load_path)
+    model = HomogeneousShapeLayer(shapes, 2)
+
+    if arg.cuda:
+        model = model.cuda(device=devices_list[0])
+
+    return model
+
+
+def create_model_transformer_encoder(arg, devices_list, num_params, eval=False):
+    from models.shape import FeatureExtractor
+    resume_dataset = arg.eval_dataset_transformer if eval else arg.dataset
+    resume_split = arg.eval_split_source_transformer if eval else arg.split
+    resume_epoch = arg.eval_epoch_source_transformer if eval else arg.resume_epoch
+
+    encoder = FeatureExtractor(boundary_num, num_params)
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'transformer_encoder_' + resume_dataset + '_' + resume_split + '_' + str(
+            resume_epoch) + '.pth'
+        print('Loading transformer encoder from ' + load_path)
+        encoder = load_weights(encoder, load_path, devices_list[0])
+    else:
+        init_weights(encoder, init_type='transformer')
+
+    if arg.cuda:
+        encoder = encoder.cuda(device=devices_list[0])
+
+    return encoder
+
+
+def create_model_transformer_generator(arg, devices_list, eval=False):
+    from models.shape import ShapeGenerator
+    resume_dataset = arg.eval_dataset_transformer if eval else arg.dataset
+    resume_split = arg.eval_split_transformer if eval else arg.split
+    resume_epoch = arg.eval_epoch_transformer if eval else arg.resume_epoch
+
+    generator = ShapeGenerator(kp_num[resume_dataset], boundary_num)
+    if resume_epoch > 0:
+        load_path = arg.resume_folder + 'transformer_generator_' + resume_dataset + '_' + resume_split + '_' + str(
+            resume_epoch) + '.pth'
+        print('Loading transformer generator from ' + load_path)
+        generator = load_weights(generator, load_path, devices_list[0])
+    else:
+        init_weights(generator, init_type='transformer')
+
+    if arg.cuda:
+        generator = generator.cuda(device=devices_list[0])
+
+    return generator
+
+
 def create_model_align(arg, devices_list, eval=False):
     from models import Align
     resume_dataset = arg.eval_dataset_align if eval else arg.dataset

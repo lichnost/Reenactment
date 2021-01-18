@@ -80,7 +80,7 @@ This program support 4 popular face landmark datasets: 300W, AFLW, COFW, WFLW. T
 
 Tips: Pay attention to the ```test_imgs``` folder and ```testset``` folder in 300W dataset, the ```test_imgs``` pics are human faces from COFW which are annotated with 68 landmarks, that's why it is put here. Some other things are written in readme.txt.
 
-The annotation file can be download from https://pan.baidu.com/s/1hYFcz260IB0pMISbHbxoTg, the code is ```tuz9```, annotation format is \[x1, y1, x2, y2, …, xn, yn, bboxleft, bboxtop, bboxright, bboxbottom, picH, picW, pic_route\], which are coordinates, bounding box position, height and width of inital pic, and route of the pic in order.
+The annotation file can be download from https://piman.baidu.com/s/1hYFcz260IB0pMISbHbxoTg, the code is ```tuz9```, annotation format is \[x1, y1, x2, y2, …, xn, yn, bboxleft, bboxtop, bboxright, bboxbottom, picH, picW, pic_route\], which are coordinates, bounding box position, height and width of inital pic, and route of the pic in order.
 
 ### Model Evaluation
 

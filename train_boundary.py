@@ -4,7 +4,7 @@ import torch.nn as nn
 import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
-from models import WingLoss, AdaptiveWingLoss, GPLoss, calc_loss
+from models import WingLoss, AdaptiveWingLoss, GPLoss, calc_gp_heatmap_loss
 from utils import *
 from utils.args import parse_args
 from utils.dataset import GeneralDataset
@@ -129,7 +129,7 @@ def train_estimator_and_regressor_discrim(arg):
             optimizer_estimator.zero_grad()
             heatmaps = estimator(input_images)
 
-            loss_G = calc_loss(criterion_gp, heatmaps, gt_heatmap)
+            loss_G = calc_gp_heatmap_loss(criterion_gp, heatmaps, gt_heatmap)
             loss_W = criterion_estimator(heatmaps, gt_heatmap)
             loss_edge = criterion_edge(get_heatmap_gray(edge(heatmaps[-1])), gt_edge)
             log('loss_G', loss_G.item(), global_step)
@@ -430,7 +430,7 @@ def train_estimator_and_regressor(arg):
 
             optimizer_estimator.zero_grad()
             heatmaps = estimator(input_images)
-            loss_G = calc_loss(criterion_gp, heatmaps, gt_heatmap)
+            loss_G = calc_gp_heatmap_loss(criterion_gp, heatmaps, gt_heatmap)
             loss_W = criterion_estimator(heatmaps[-1], gt_heatmap)
             loss_edge = criterion_edge(get_heatmap_gray(edge(heatmaps[-1])), gt_edge)
             log('loss_G', loss_G.item(), global_step)

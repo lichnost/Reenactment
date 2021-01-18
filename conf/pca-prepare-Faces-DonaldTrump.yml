@@ -1,0 +1,5 @@
+dataset: Faces
+split: DonaldTrump
+
+PDB: False
+pca_components: 30

@@ -1,0 +1,5 @@
+dataset: Faces
+split: Adush
+
+PDB: False
+pca_components: 30

@@ -317,7 +317,7 @@ def coords_seq_to_xy(dataset, shapes):
     :param shapes:
     :return:
     '''
-    if shapes.shape[-1] == kp_num[dataset] * 2 + 1:
+    if shapes.ndim == 2:
         if isinstance(shapes, torch.Tensor):
             return torch.reshape(shapes, [-1, kp_num[dataset], 2])
         return shapes.reshape((-1, kp_num[dataset], 2), order='F')

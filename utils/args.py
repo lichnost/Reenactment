@@ -89,7 +89,7 @@ parser.add_argument('--loss_edge_lambda',     default=1000.,                type
 
 # pca
 parser.add_argument('--pca_components',          default=196,                type=int)
-parser.add_argument('--pca_used_components',     default=10,                type=int)
+parser.add_argument('--pca_used_components',     default=30,                type=int)
 parser.add_argument('--pca_inverse',     default=False,                type=str2bool)
 
 # resume training parameters
@@ -130,6 +130,7 @@ parser.add_argument('--eval_epoch_decoder',          default=85,                
 parser.add_argument('--eval_epoch_decoder_discriminator',     default=85,                 type=int)
 parser.add_argument('--eval_epoch_align',          default=350,                 type=int)
 parser.add_argument('--eval_epoch_transformer',          default=40,                 type=int)
+parser.add_argument('--eval_epoch_source_transformer',          default=40,                 type=int)
 parser.add_argument('--max_threshold',      default=0.1,                 type=float)
 parser.add_argument('--norm_way',           default='inter_ocular',      type=str,
                     choices=['inter_pupil', 'inter_ocular', 'face_size'])

@@ -68,10 +68,10 @@ dataset_size = {
         'blur':             773
     },
     'Faces': {
-        'PavelSemenov':    5053,
-        'Adush':           7089,
-        'DonaldTrump':     39800,
-        'Kathleen':        39782
+        'PavelSemenov':    5051,
+        'Adush':           7095,
+        'DonaldTrump':     39793,
+        'Kathleen':        39789
     },
     'CelebA': {
         'train':    192829

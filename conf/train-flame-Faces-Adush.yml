@@ -2,6 +2,9 @@ dataset: Faces
 split: Adush
 type: train
 
+eval_epoch_estimator: 1085
+
+
 workers: 0
 batch_size: 4
 dataset_indexes:
